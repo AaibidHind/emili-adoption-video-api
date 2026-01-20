@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Deletion Instructions — Emili</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; max-width: 900px; }
+    h1, h2 { margin-bottom: 8px; }
+    code { background:#f4f4f4; padding:2px 6px; border-radius:4px; }
+    .box { background:#f7f9fc; border:1px solid #d9e2f1; padding:16px; border-radius:10px; }
+    a { word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>Data Deletion Instructions</h1>
+  <p>
+    This page explains how users can request the deletion of their data associated with the <strong>Emili</strong>
+    application (“the App”).
+  </p>
+
+  <div class="box">
+    <h2>How to request data deletion</h2>
+    <ol>
+      <li>
+        Send an email to: <strong>hind@emili.net</strong>
+      </li>
+      <li>
+        Use the subject line: <code>Data Deletion Request — Emili</code>
+      </li>
+      <li>
+        In the email body, please include:
+        <ul>
+          <li>Your full name</li>
+          <li>The email address used with the App (if applicable)</li>
+          <li>The platform you used (Facebook / Instagram)</li>
+          <li>Any relevant profile/page identifier (if applicable)</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>What data will be deleted</h2>
+    <p>
+      Upon verifying the request, we will delete any data associated with your account that was collected through the App,
+      such as authentication identifiers and any stored settings related to your usage.
+    </p>
+
+    <h2>Processing time</h2>
+    <p>
+      We process deletion requests as soon as possible. Typical processing time is <strong>within 7 business days</strong>.
+    </p>
+
+    <h2>Need help?</h2>
+    <p>
+      If you have questions about this process, contact us at <strong>hind@emili.net</strong>.
+    </p>
+  </div>
+
+  <p style="margin-top:24px;">
+    <strong>Last updated:</strong> <span id="date"></span>
+  </p>
+
+  <script>
+    // Auto-fill today's date
+    const d = new Date();
+    document.getElementById("date").textContent = d.toISOString().split("T")[0];
+  </script>
+</body>
+</html>
