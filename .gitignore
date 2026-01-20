@@ -1,0 +1,19 @@
+﻿# Python / venv
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Env files (NE PAS PUSH)
+.env
+.env.*
+
+# Outputs / generated files
+out/
+*.mp4
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

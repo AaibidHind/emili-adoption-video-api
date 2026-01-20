@@ -1,0 +1,28 @@
+# Core app
+streamlit
+fastapi
+uvicorn[standard]
+
+# OpenAI client (new SDK)
+openai>=1.0.0
+
+# Video & audio processing
+moviepy
+ffmpeg-python
+imageio
+imageio-ffmpeg
+Pillow
+
+# General utilities
+python-dotenv
+numpy
+tqdm
+pydantic<2.0
+
+google-api-python-client
+google-auth
+google-auth-oauthlib
+
+requests
+
+
