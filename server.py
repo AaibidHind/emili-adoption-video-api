@@ -61,6 +61,20 @@ def privacy():
         return HTMLResponse("<h2>Privacy Policy</h2><p>Placeholder.</p>", status_code=200)
     return p.read_text(encoding="utf-8")
 
+from fastapi.responses import HTMLResponse
+
+@app.get("/delete-data", response_class=HTMLResponse)
+def delete_data():
+    p = Path("legal/delete-data.html")
+    if not p.exists():
+        return HTMLResponse("<h2>Data Deletion</h2><p>Placeholder.</p>", status_code=200)
+    return p.read_text(encoding="utf-8")
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
+
+
 @app.get("/{filename}.txt")
 def serve_txt(filename: str):
     file_path = STATIC_DIR / f"{filename}.txt"
