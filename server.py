@@ -190,7 +190,9 @@ def meta_auth_start():
         "state": state,
         "response_type": "code",
         # C'est ICI la magie : on utilise config_id au lieu de scope
-        "config_id": META_CONFIG_ID 
+        #"config_id": META_CONFIG_ID 
+        # 2. Ajoutez cette ligne pour demander manuellement les accès de base
+        "scope": "email,public_profile"
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
