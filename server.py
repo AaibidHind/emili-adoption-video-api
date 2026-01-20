@@ -174,8 +174,9 @@ META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
 #   pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish
 META_SCOPES = os.getenv(
     "META_SCOPES",
-    "public_profile,email"
+    "public_profile"
 )
+
 
 @app.get("/auth/meta/start")
 def meta_auth_start():
