@@ -11,14 +11,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+# Assurez-vous que ces modules existent bien dans votre projet
 from backend.config import PetProjectConfig
 from backend.generate import generate_video
 from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-from fastapi.responses import JSONResponse
-
+# -----------------------
+# Basic Routes
+# -----------------------
 @app.get("/")
 def root():
     return JSONResponse({
@@ -32,6 +34,9 @@ def health():
     return {"status": "ok"}
 
 
+# -----------------------
+# Static Files Setup
+# -----------------------
 OUT_DIR = Path("out")
 OUT_DIR.mkdir(exist_ok=True)
 app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
@@ -44,8 +49,14 @@ STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
+# Mount legal directory if exists
+LEGAL_DIR = Path("legal")
+if LEGAL_DIR.exists():
+    app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
+
+
 # -----------------------
-# Legal pages (optional)
+# Legal pages (endpoints)
 # -----------------------
 @app.get("/terms", response_class=HTMLResponse)
 def terms():
@@ -61,8 +72,6 @@ def privacy():
         return HTMLResponse("<h2>Privacy Policy</h2><p>Placeholder.</p>", status_code=200)
     return p.read_text(encoding="utf-8")
 
-from fastapi.responses import HTMLResponse
-
 @app.get("/delete-data", response_class=HTMLResponse)
 def delete_data():
     p = Path("legal/delete-data.html")
@@ -70,17 +79,13 @@ def delete_data():
         return HTMLResponse("<h2>Data Deletion</h2><p>Placeholder.</p>", status_code=200)
     return p.read_text(encoding="utf-8")
 
-from fastapi.staticfiles import StaticFiles
-
-app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
-
-
 @app.get("/{filename}.txt")
 def serve_txt(filename: str):
     file_path = STATIC_DIR / f"{filename}.txt"
     if file_path.exists():
         return FileResponse(str(file_path), media_type="text/plain")
     raise HTTPException(status_code=404, detail="File not found")
+
 
 # --------------------------------------------------------------------
 # Shared OAuth state + in-memory token stores (TEMP: replace with DB)
@@ -93,7 +98,7 @@ TOKENS: Dict[str, Any] = {
 }
 
 # =========================
-# TikTok OAuth (existing)
+# TikTok OAuth
 # =========================
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
@@ -158,7 +163,7 @@ def tiktok_auth_callback(code: str | None = None, state: str | None = None):
     }
 
 # =========================
-# META OAuth (Facebook/IG)
+# META OAuth (Facebook/IG) - CORRIGÉ
 # =========================
 META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
 META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
@@ -168,13 +173,7 @@ META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRE
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
 
-# Permissions:
-# - Minimal dev (login): "public_profile,email"
-# - For Pages + IG publishing (later app review):
-#   pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish
 META_SCOPES = os.getenv("META_SCOPES", "")
-
-
 
 @app.get("/auth/meta/start")
 def meta_auth_start():
@@ -184,15 +183,21 @@ def meta_auth_start():
     state = secrets.token_urlsafe(16)
     OAUTH_STATE[state] = True
 
+    # --- CORRECTION ICI ---
+    # Si META_SCOPES est vide, on force les permissions nécessaires pour "Login for Business".
+    # Sans cela, l'erreur "Cette application a besoin d'au moins supported permission" apparaît.
+    default_scopes = "pages_show_list,instagram_basic,pages_read_engagement"
+    
+    # On utilise les scopes de l'environnement s'ils existent, sinon les défauts
+    effective_scopes = META_SCOPES if META_SCOPES and META_SCOPES.strip() else default_scopes
+
     params = {
         "client_id": META_APP_ID,
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        
+        "scope": effective_scopes # Le scope est maintenant obligatoire
     }
-    if META_SCOPES.strip():
-        params["scope"] = META_SCOPES
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
     return RedirectResponse(url)
