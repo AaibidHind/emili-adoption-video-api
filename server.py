@@ -171,7 +171,7 @@ META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRE
 
 # On utilise l'ID que vous venez de créer. 
 # Si vous préférez le mettre dans le .env, utilisez os.getenv("META_CONFIG_ID")
-META_CONFIG_ID = "1427677095637585" 
+META_CONFIG_ID = "1644053933559740" 
 
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
@@ -190,9 +190,9 @@ def meta_auth_start():
         "state": state,
         "response_type": "code",
         # C'est ICI la magie : on utilise config_id au lieu de scope
-        #"config_id": META_CONFIG_ID 
+        "config_id": META_CONFIG_ID 
         # 2. Ajoutez cette ligne pour demander manuellement les accès de base
-        "scope": "email,public_profile"
+        #"scope": "email,public_profile"
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
