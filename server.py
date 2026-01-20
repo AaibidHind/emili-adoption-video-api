@@ -17,6 +17,21 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
+from fastapi.responses import JSONResponse
+
+@app.get("/")
+def root():
+    return JSONResponse({
+        "status": "ok",
+        "message": "Emili API is running",
+        "docs": "/docs"
+    })
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 OUT_DIR = Path("out")
 OUT_DIR.mkdir(exist_ok=True)
 app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
