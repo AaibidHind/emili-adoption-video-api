@@ -163,40 +163,38 @@ def tiktok_auth_callback(code: str | None = None, state: str | None = None):
     }
 
 # =========================
-# META OAuth (Facebook/IG) - CORRIGÉ
+# META OAuth (Facebook/IG) - VERSION FINALE & CORRIGÉE
 # =========================
-META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
-META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
-META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRECT_URI")
 
-# OAuth endpoints
+# 1. Identifiants en dur (tirés de vos captures d'écran) pour éviter les erreurs de variables d'env
+META_APP_ID = "1380148156517363"
+META_CONFIG_ID = "1427677095637585"
+
+# 2. Le Secret doit rester caché (Assurez-vous qu'il est dans votre .env sur Render !)
+META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
+
+# 3. URL de redirection par défaut si non définie dans .env
+META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or "https://emili-adoption-video-api.onrender.com/auth/meta/callback"
+
+# Endpoints OAuth
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
-
-META_SCOPES = os.getenv("META_SCOPES", "")
 
 @app.get("/auth/meta/start")
 def meta_auth_start():
     if not META_APP_ID or not META_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
+        raise HTTPException(status_code=500, detail="Configuration critique manquante (APP_ID ou Redirect URI).")
 
     state = secrets.token_urlsafe(16)
     OAUTH_STATE[state] = True
-
-    # --- CORRECTION ICI ---
-    # Si META_SCOPES est vide, on force les permissions nécessaires pour "Login for Business".
-    # Sans cela, l'erreur "Cette application a besoin d'au moins supported permission" apparaît.
-    default_scopes = "pages_show_list,instagram_basic,pages_read_engagement"
-    
-    # On utilise les scopes de l'environnement s'ils existent, sinon les défauts
-    effective_scopes = META_SCOPES if META_SCOPES and META_SCOPES.strip() else default_scopes
 
     params = {
         "client_id": META_APP_ID,
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        "scope": effective_scopes # Le scope est maintenant obligatoire
+        # UTILISATION DU CONFIG_ID : Cela résout l'erreur "Invalid Scopes"
+        "config_id": META_CONFIG_ID
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
@@ -205,10 +203,11 @@ def meta_auth_start():
 @app.get("/auth/meta/callback")
 def meta_auth_callback(code: str | None = None, state: str | None = None):
     if not code or not state or state not in OAUTH_STATE:
-        return JSONResponse({"error": "Invalid OAuth response"}, status_code=400)
+        return JSONResponse({"error": "Invalid OAuth response (state mismatch)"}, status_code=400)
 
-    if not META_APP_ID or not META_APP_SECRET or not META_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Missing META_APP_ID / META_APP_SECRET / META_REDIRECT_URI.")
+    # Vérification que le secret est bien présent
+    if not META_APP_SECRET:
+         raise HTTPException(status_code=500, detail="Erreur Serveur: META_APP_SECRET est manquant dans les variables d'environnement.")
 
     params = {
         "client_id": META_APP_ID,
@@ -217,15 +216,21 @@ def meta_auth_callback(code: str | None = None, state: str | None = None):
         "code": code,
     }
 
-    token_res = requests.get(META_TOKEN_URL, params=params, timeout=30)
-    data = token_res.json()
+    try:
+        token_res = requests.get(META_TOKEN_URL, params=params, timeout=30)
+        data = token_res.json()
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to connect to Meta: {str(e)}"}, status_code=500)
+
+    if "error" in data:
+        return JSONResponse({"error_from_meta": data}, status_code=400)
 
     TOKENS["meta"] = data
 
     return {
         "message": "Meta account connected successfully",
         "meta_response": data,
-        "next": "If you need Pages/Instagram publishing, request the required permissions and generate a Page access token.",
+        "next_step": "Token received. You can now use the API to publish videos."
     }
 
 @app.get("/auth/meta/status")
