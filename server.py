@@ -172,10 +172,8 @@ META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
 # - Minimal dev (login): "public_profile,email"
 # - For Pages + IG publishing (later app review):
 #   pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish
-META_SCOPES = os.getenv(
-    "META_SCOPES",
-    "public_profile"
-)
+META_SCOPES = os.getenv("META_SCOPES", "")
+
 
 
 @app.get("/auth/meta/start")
@@ -191,8 +189,10 @@ def meta_auth_start():
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        "scope": META_SCOPES,
+        
     }
+    if META_SCOPES.strip():
+        params["scope"] = META_SCOPES
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
     return RedirectResponse(url)
