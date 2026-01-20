@@ -163,38 +163,44 @@ def tiktok_auth_callback(code: str | None = None, state: str | None = None):
     }
 
 # =========================
-# META OAuth (Facebook/IG) - VERSION FINALE & CORRIGÉE
+# META OAuth (Facebook/IG) - VERSION FINALE CORRIGÉE
 # =========================
 
-# 1. Identifiants en dur (tirés de vos captures d'écran) pour éviter les erreurs de variables d'env
+# 1. ID DE L'APPLICATION (Récupéré de votre capture d'écran)
+#    Ceci corrige l'erreur "ID d'app non valide"
 META_APP_ID = "1380148156517363"
+
+# 2. ID DE CONFIGURATION (Celui que vous avez créé avec les permissions)
+#    Ceci corrige l'erreur "Invalid Scopes"
 META_CONFIG_ID = "1427677095637585"
 
-# 2. Le Secret doit rester caché (Assurez-vous qu'il est dans votre .env sur Render !)
-META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
-
-# 3. URL de redirection par défaut si non définie dans .env
+# 3. URL DE REDIRECTION (Celle configurée dans votre Dashboard Meta)
+#    Si la variable d'env est vide, on utilise celle de Render par défaut
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or "https://emili-adoption-video-api.onrender.com/auth/meta/callback"
 
-# Endpoints OAuth
+# 4. SECRET DE L'APPLICATION (IMPORTANT)
+#    Vous devez absolument avoir META_APP_SECRET dans votre fichier .env
+META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
+
+
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
 
 @app.get("/auth/meta/start")
 def meta_auth_start():
-    if not META_APP_ID or not META_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Configuration critique manquante (APP_ID ou Redirect URI).")
-
+    # Vérification que l'ID est bien présent
+    if not META_APP_ID:
+        raise HTTPException(status_code=500, detail="Configuration error: Missing META_APP_ID")
+    
     state = secrets.token_urlsafe(16)
     OAUTH_STATE[state] = True
 
     params = {
-        "client_id": META_APP_ID,
+        "client_id": META_APP_ID,       # Utilise l'ID en dur 1380...
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        # UTILISATION DU CONFIG_ID : Cela résout l'erreur "Invalid Scopes"
-        "config_id": META_CONFIG_ID
+        "config_id": META_CONFIG_ID     # Utilise la config 1427... (plus de 'scope' manuel)
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
@@ -202,12 +208,13 @@ def meta_auth_start():
 
 @app.get("/auth/meta/callback")
 def meta_auth_callback(code: str | None = None, state: str | None = None):
+    # Vérification du state pour la sécurité
     if not code or not state or state not in OAUTH_STATE:
-        return JSONResponse({"error": "Invalid OAuth response (state mismatch)"}, status_code=400)
+        return JSONResponse({"error": "Invalid OAuth response or state mismatch"}, status_code=400)
 
-    # Vérification que le secret est bien présent
+    # Vérification que le Secret est bien là pour l'échange de token
     if not META_APP_SECRET:
-         raise HTTPException(status_code=500, detail="Erreur Serveur: META_APP_SECRET est manquant dans les variables d'environnement.")
+         raise HTTPException(status_code=500, detail="Missing META_APP_SECRET in environment variables.")
 
     params = {
         "client_id": META_APP_ID,
@@ -216,21 +223,20 @@ def meta_auth_callback(code: str | None = None, state: str | None = None):
         "code": code,
     }
 
-    try:
-        token_res = requests.get(META_TOKEN_URL, params=params, timeout=30)
-        data = token_res.json()
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to connect to Meta: {str(e)}"}, status_code=500)
+    # Echange du code contre le token d'accès
+    token_res = requests.get(META_TOKEN_URL, params=params, timeout=30)
+    data = token_res.json()
+
+    # Sauvegarde du résultat (Token ou Erreur)
+    TOKENS["meta"] = data
 
     if "error" in data:
-        return JSONResponse({"error_from_meta": data}, status_code=400)
-
-    TOKENS["meta"] = data
+        return JSONResponse(status_code=400, content=data)
 
     return {
         "message": "Meta account connected successfully",
         "meta_response": data,
-        "next_step": "Token received. You can now use the API to publish videos."
+        "next": "Account linked via Configuration ID. You can now use the Graph API.",
     }
 
 @app.get("/auth/meta/status")
