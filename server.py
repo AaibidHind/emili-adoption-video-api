@@ -11,16 +11,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# Assurez-vous que ces modules existent bien dans votre projet backend
 from backend.config import PetProjectConfig
 from backend.generate import generate_video
 from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-# -----------------------
-# Basic Routes
-# -----------------------
+
 @app.get("/")
 def root():
     return JSONResponse({
@@ -34,9 +31,7 @@ def health():
     return {"status": "ok"}
 
 
-# -----------------------
-# Static Files Setup
-# -----------------------
+
 OUT_DIR = Path("out")
 OUT_DIR.mkdir(exist_ok=True)
 app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
@@ -49,15 +44,12 @@ STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
-# Mount legal directory if exists
+
 LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
     app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
 
 
-# -----------------------
-# Legal pages (endpoints)
-# -----------------------
 @app.get("/terms", response_class=HTMLResponse)
 def terms():
     p = Path("legal/terms.html")
@@ -87,19 +79,15 @@ def serve_txt(filename: str):
     raise HTTPException(status_code=404, detail="File not found")
 
 
-# --------------------------------------------------------------------
-# Shared OAuth state + in-memory token stores (TEMP: replace with DB)
-# --------------------------------------------------------------------
+
 OAUTH_STATE: Dict[str, bool] = {}
 
 TOKENS: Dict[str, Any] = {
-    "tiktok": None,  # will store last tiktok token response
-    "meta": None,    # will store last meta token response
+    "tiktok": None,  
+    "meta": None,    
 }
 
-# =========================
-# TikTok OAuth
-# =========================
+
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
 TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI")
@@ -162,15 +150,12 @@ def tiktok_auth_callback(code: str | None = None, state: str | None = None):
         "tiktok_response": TOKENS["tiktok"],
     }
 
-# =========================
-# META OAuth (Facebook/IG) - VERSION CORRIGÉE AVEC CONFIG ID
-# =========================
+
 META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
 META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRECT_URI")
 
-# On utilise l'ID que vous venez de créer. 
-# Si vous préférez le mettre dans le .env, utilisez os.getenv("META_CONFIG_ID")
+
 META_CONFIG_ID = "1644053933559740" 
 
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
@@ -189,10 +174,9 @@ def meta_auth_start():
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        # C'est ICI la magie : on utilise config_id au lieu de scope
+       
         "config_id": META_CONFIG_ID 
-        # 2. Ajoutez cette ligne pour demander manuellement les accès de base
-        #"scope": "email,public_profile"
+      
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
@@ -229,9 +213,6 @@ def meta_status():
     return {"meta_token_present": TOKENS["meta"] is not None, "meta_token": TOKENS["meta"]}
 
 
-# =========================
-# Video generation / publish
-# =========================
 class GenRequest(BaseModel):
     pet_dir: str
     logo_path: Optional[str] = "assets/branding/logo.png"
