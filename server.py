@@ -299,3 +299,33 @@ def publish(req: PubRequest):
         results.append(res)
 
     return {"results": results}
+
+@app.get("/auth/meta/find-my-ids")
+def find_my_ids():
+    """
+    Outil temporaire pour trouver vos ID Facebook et Instagram
+    """
+    if not TOKENS.get("meta"):
+        return JSONResponse({
+            "error": "Vous n'êtes pas connecté !", 
+            "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter."
+        }, status_code=400)
+
+    user_token = TOKENS["meta"]["access_token"]
+    
+    # On demande à Facebook la liste des pages
+    url = "https://graph.facebook.com/v19.0/me/accounts"
+    params = {
+        "access_token": user_token, 
+        "fields": "name,id,access_token,instagram_business_account"
+    }
+    
+    try:
+        r = requests.get(url, params=params)
+        data = r.json()
+        return {
+            "MESSAGE": "✅ Copiez ces valeurs dans Render > Environment",
+            "DATA": data
+        }
+    except Exception as e:
+        return {"error": str(e)}
