@@ -166,6 +166,12 @@ def meta_auth_start():
     if not META_APP_ID or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
 
+    # --- MODIFICATION START: Récupération des scopes ---
+    # On récupère les scopes depuis Render (META_SCOPES)
+    # Valeur par défaut de sécurité si vide
+    scopes = os.getenv("META_SCOPES", "public_profile,email") 
+    # --- MODIFICATION END ---
+
     state = secrets.token_urlsafe(16)
     OAUTH_STATE[state] = True
 
@@ -174,9 +180,11 @@ def meta_auth_start():
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-       
-        "config_id": META_CONFIG_ID 
-      
+        
+        # --- MODIFICATION START: Utilisation de SCOPE au lieu de CONFIG_ID ---
+        # "config_id": META_CONFIG_ID,  # Commenté pour laisser la priorité aux scopes explicites
+        "scope": scopes,
+        # --- MODIFICATION END ---
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
