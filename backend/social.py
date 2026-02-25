@@ -133,43 +133,45 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
 
 
 # =========================
-# Facebook Page video via file_url
+# Facebook Page video via Direct File Upload (Correction)
 # =========================
 def _post_to_facebook_page_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     page_id = os.getenv("FACEBOOK_PAGE_ID")
     access_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN")
-    file_url = _public_url_for_file(video_path)
 
     if not page_id or not access_token:
         res = SocialPostResult("facebook", False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN", str(video_path), title, description)
         _log_result(res)
         return res
 
-    if not file_url:
-        res = SocialPostResult("facebook", False, "Missing SOCIAL_PUBLIC_BASE_URL (public domain for /out/...)", str(video_path), title, description)
-        _log_result(res)
-        return res
-
     url = f"https://graph.facebook.com/v19.0/{page_id}/videos"
+    
+    # 1. On prépare le texte
     data = {
         "access_token": access_token,
-        "file_url": file_url,
         "description": description,
         "title": title,
     }
 
     try:
-        r = requests.post(url, data=data, timeout=600)
+        # 2. On ouvre le fichier vidéo pour l'envoyer comme pièce jointe
+        with open(video_path, "rb") as video_file:
+            files = {
+                "source": video_file
+            }
+            # 3. On envoie tout à Facebook !
+            r = requests.post(url, data=data, files=files, timeout=600)
+            
         r.raise_for_status()
         j = r.json()
         res = SocialPostResult(
             "facebook",
             True,
-            "Facebook upload completed.",
+            "Facebook direct upload completed.",
             str(video_path),
             title,
             description,
-            {"video_id": j.get("id"), "file_url": file_url, "graph_response": j},
+            {"video_id": j.get("id"), "graph_response": j},
         )
         _log_result(res)
         return res
@@ -184,7 +186,7 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
             str(video_path),
             title,
             description,
-            {"file_url": file_url, "hint": "Check token permissions + page role + file_url reachable"},
+            {"hint": "Check token permissions + page role"},
         )
         _log_result(res)
         return res
