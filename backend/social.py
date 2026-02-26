@@ -192,6 +192,7 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
         return res
 
 
+
 # =========================
 # Instagram (Reels/Video) via Container + Publish
 # =========================
@@ -251,7 +252,8 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             if code == "FINISHED":
                 break
             if code == "ERROR":
-                res = SocialPostResult("instagram", False, f"Instagram processing error: {data}", str(video_path), title, description, {"creation_id": creation_id})
+                error_msg = data.get("status", {}).get("error_message", "Raison inconnue")
+                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg} (Détails: {data})", str(video_path), title, description, {"creation_id": creation_id})
                 _log_result(res)
                 return res
 
