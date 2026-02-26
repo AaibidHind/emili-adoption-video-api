@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import json
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -17,7 +18,6 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-
 @app.get("/")
 def root():
     return JSONResponse({
@@ -31,9 +31,13 @@ def health():
     return {"status": "ok"}
 
 
+# --- CORRECTION 1 : Le chemin de sauvegarde Render ---
+if os.path.exists("/opt/render/project/src"):
+    OUT_DIR = Path("/opt/render/project/src/out")
+else:
+    OUT_DIR = Path("out").resolve()
 
-OUT_DIR = Path("out")
-OUT_DIR.mkdir(exist_ok=True)
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
 
 ASSETS_DIR = Path("assets")
@@ -79,13 +83,26 @@ def serve_txt(filename: str):
     raise HTTPException(status_code=404, detail="File not found")
 
 
-
 OAUTH_STATE: Dict[str, bool] = {}
 
-TOKENS: Dict[str, Any] = {
-    "tiktok": None,  
-    "meta": None,    
-}
+# --- CORRECTION 2 : Sauvegarde des tokens pour éviter l'amnésie ---
+TOKEN_FILE = Path("tokens.json")
+
+def load_tokens() -> Dict[str, Any]:
+    if TOKEN_FILE.exists():
+        try:
+            return json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"tiktok": None, "meta": None}
+
+def save_tokens(tokens: Dict[str, Any]):
+    try:
+        TOKEN_FILE.write_text(json.dumps(tokens), encoding="utf-8")
+    except Exception as e:
+        print(f"Erreur de sauvegarde des tokens: {e}")
+
+TOKENS: Dict[str, Any] = load_tokens()
 
 
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
@@ -117,8 +134,9 @@ def tiktok_auth_start():
     url = requests.Request("GET", TIKTOK_AUTH_URL, params=params).prepare().url
     return RedirectResponse(url)
 
+# --- CORRECTION 3 : Remplacement de str | None par Optional[str] ---
 @app.get("/auth/tiktok/callback")
-def tiktok_auth_callback(code: str | None = None, state: str | None = None):
+def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     if not code or not state or state not in OAUTH_STATE:
         return JSONResponse({"error": "Invalid OAuth response"}, status_code=400)
 
@@ -144,6 +162,7 @@ def tiktok_auth_callback(code: str | None = None, state: str | None = None):
     )
 
     TOKENS["tiktok"] = token_res.json()
+    save_tokens(TOKENS) # On sauvegarde sur le disque
 
     return {
         "message": "TikTok account connected successfully",
@@ -155,9 +174,6 @@ META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
 META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRECT_URI")
 
-
-META_CONFIG_ID = "902571896043144" 
-
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
 
@@ -166,11 +182,7 @@ def meta_auth_start():
     if not META_APP_ID or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
 
-    # --- MODIFICATION START: Récupération des scopes ---
-    # On récupère les scopes depuis Render (META_SCOPES)
-    # Valeur par défaut de sécurité si vide
     scopes = os.getenv("META_SCOPES", "public_profile,email") 
-    # --- MODIFICATION END ---
 
     state = secrets.token_urlsafe(16)
     OAUTH_STATE[state] = True
@@ -180,18 +192,15 @@ def meta_auth_start():
         "redirect_uri": META_REDIRECT_URI,
         "state": state,
         "response_type": "code",
-        
-        # --- MODIFICATION START: Utilisation de SCOPE au lieu de CONFIG_ID ---
-        # "config_id": META_CONFIG_ID,  # Commenté pour laisser la priorité aux scopes explicites
         "scope": scopes,
-        # --- MODIFICATION END ---
     }
 
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
     return RedirectResponse(url)
 
+# --- CORRECTION 3 : Remplacement de str | None par Optional[str] ---
 @app.get("/auth/meta/callback")
-def meta_auth_callback(code: str | None = None, state: str | None = None):
+def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     if not code or not state or state not in OAUTH_STATE:
         return JSONResponse({"error": "Invalid OAuth response"}, status_code=400)
 
@@ -209,6 +218,7 @@ def meta_auth_callback(code: str | None = None, state: str | None = None):
     data = token_res.json()
 
     TOKENS["meta"] = data
+    save_tokens(TOKENS) # On sauvegarde sur le disque
 
     return {
         "message": "Meta account connected successfully",
@@ -218,7 +228,7 @@ def meta_auth_callback(code: str | None = None, state: str | None = None):
 
 @app.get("/auth/meta/status")
 def meta_status():
-    return {"meta_token_present": TOKENS["meta"] is not None, "meta_token": TOKENS["meta"]}
+    return {"meta_token_present": TOKENS.get("meta") is not None, "meta_token": TOKENS.get("meta")}
 
 
 class GenRequest(BaseModel):
@@ -305,15 +315,18 @@ def find_my_ids():
     """
     Outil temporaire pour trouver vos ID Facebook et Instagram
     """
-    if not TOKENS.get("meta"):
+    meta_data = TOKENS.get("meta")
+    
+    # --- CORRECTION 4 : Protection contre l'erreur silencieuse ---
+    if not meta_data or "access_token" not in meta_data:
         return JSONResponse({
-            "error": "Vous n'êtes pas connecté !", 
-            "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter."
+            "error": "Token introuvable ou invalide !", 
+            "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter.",
+            "debug": meta_data
         }, status_code=400)
 
-    user_token = TOKENS["meta"]["access_token"]
+    user_token = meta_data["access_token"]
     
-    # On demande à Facebook la liste des pages
     url = "https://graph.facebook.com/v19.0/me/accounts"
     params = {
         "access_token": user_token, 
