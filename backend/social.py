@@ -194,8 +194,6 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
         _log_result(res)
         return res
 
-
-
 # =========================
 # Instagram (Reels/Video) via Container + Publish
 # =========================
@@ -214,11 +212,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # CORRECTION : On affiche l'URL dans les logs pour être sûr
     print(f"\n--- [INSTAGRAM DEBUG] Tentative de téléchargement depuis : {video_url} ---\n")
 
     caption = f"{title}\n\n{description}".strip()
-
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
     media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")  # "REELS" or "VIDEO"
 
@@ -249,7 +245,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
     status_url = f"https://graph.facebook.com/{graph_version}/{creation_id}"
     status_params = {"access_token": access_token, "fields": "status_code,status"}
     
-    # CORRECTION : On force 60 itérations (5 minutes d'attente max)
     max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "60"))
     sleep_sec = int(os.getenv("INSTAGRAM_POLL_SECONDS", "5"))
 
@@ -263,29 +258,32 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             
             s.raise_for_status()
             data = s.json()
-            code = data.get("status_code")  # FINISHED / IN_PROGRESS / ERROR
+            code = data.get("status_code")
 
             print(f"[INSTAGRAM STATUS] Tentative {attempt}/{max_retries} : {code}")
 
             if code == "FINISHED":
                 break
             if code == "ERROR":
-                error_msg = data.get("status", {}).get("error_message", "Raison inconnue")
-                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg} (Détails: {data})", str(video_path), title, description, {"creation_id": creation_id, "video_url": video_url})
+                # --- CORRECTION VITALE ICI ---
+                # Graph API peut renvoyer 'status' comme un dict OU un texte simple.
+                raw_status = data.get("status", "Raison inconnue")
+                if isinstance(raw_status, dict):
+                    error_msg = raw_status.get("error_message", str(raw_status))
+                else:
+                    error_msg = str(raw_status)
+                
+                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg}", str(video_path), title, description, {"creation_id": creation_id, "video_url": video_url})
                 _log_result(res)
                 return res
 
             time.sleep(sleep_sec)
         except Exception as e:
-            # CORRECTION : Ne plus cacher les erreurs silencieusement
             last_error_log = str(e)
+            print(f"[INSTAGRAM POLL ERROR] {e}")
             time.sleep(sleep_sec)
     else:
-        # Si on arrive ici, c'est le timeout
-        error_msg = f"Instagram processing timed out after {max_retries * sleep_sec} seconds."
-        if last_error_log:
-            error_msg += f" Dernière erreur réseau: {last_error_log}"
-            
+        error_msg = f"Instagram processing timed out. Dernière erreur: {last_error_log}"
         res = SocialPostResult("instagram", False, error_msg, str(video_path), title, description, {"creation_id": creation_id, "video_url": video_url})
         _log_result(res)
         return res
@@ -300,30 +298,13 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         publish_json = publish_resp.json()
     except requests.RequestException as e:
         err_text = e.response.text if getattr(e, "response", None) is not None else repr(e)
-        res = SocialPostResult(
-            "instagram",
-            False,
-            f"Instagram publish failed: {err_text}",
-            str(video_path),
-            title,
-            description,
-            {"creation_id": creation_id, "video_url": video_url, "media_type": media_type},
-        )
+        res = SocialPostResult("instagram", False, f"Instagram publish failed: {err_text}", str(video_path), title, description, {"creation_id": creation_id})
         _log_result(res)
         return res
 
-    res = SocialPostResult(
-        "instagram",
-        True,
-        "Instagram published successfully.",
-        str(video_path),
-        title,
-        description,
-        {"creation_id": creation_id, "instagram_post_id": publish_json.get("id"), "video_url": video_url, "media_type": media_type},
-    )
+    res = SocialPostResult("instagram", True, "Instagram published successfully.", str(video_path), title, description, {"instagram_post_id": publish_json.get("id")})
     _log_result(res)
     return res
-
 
 # =========================
 # TikTok placeholder
