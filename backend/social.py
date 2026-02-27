@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.parse
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,7 +56,9 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     base = os.getenv("SOCIAL_PUBLIC_BASE_URL")
     if not base:
         return None
-    return f"{base.rstrip('/')}/out/{video_path.name}"
+    # CORRECTION : Encodage de l'URL pour gérer les espaces et caractères spéciaux
+    safe_name = urllib.parse.quote(video_path.name)
+    return f"{base.rstrip('/')}/out/{safe_name}"
 
 
 # =========================
@@ -211,6 +214,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
+    # CORRECTION : On affiche l'URL dans les logs pour être sûr
+    print(f"\n--- [INSTAGRAM DEBUG] Tentative de téléchargement depuis : {video_url} ---\n")
+
     caption = f"{title}\n\n{description}".strip()
 
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
@@ -232,36 +238,55 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         if not creation_id:
             raise RuntimeError(f"No creation_id returned. Response: {create_resp.text}")
     except Exception as e:
-        res = SocialPostResult("instagram", False, f"Instagram create container failed: {repr(e)}", str(video_path), title, description, {"video_url": video_url})
+        err_txt = repr(e)
+        if hasattr(e, "response") and e.response is not None:
+            err_txt = e.response.text
+        res = SocialPostResult("instagram", False, f"Instagram create container failed: {err_txt}", str(video_path), title, description, {"video_url": video_url})
         _log_result(res)
         return res
 
     # 2) Poll processing status
     status_url = f"https://graph.facebook.com/{graph_version}/{creation_id}"
     status_params = {"access_token": access_token, "fields": "status_code,status"}
-    max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "30"))
+    
+    # CORRECTION : On force 60 itérations (5 minutes d'attente max)
+    max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "60"))
     sleep_sec = int(os.getenv("INSTAGRAM_POLL_SECONDS", "5"))
 
-    for _ in range(max_retries):
+    last_error_log = None
+
+    for attempt in range(max_retries):
         try:
             s = requests.get(status_url, params=status_params, timeout=30)
+            if s.status_code != 200:
+                last_error_log = f"HTTP {s.status_code}: {s.text}"
+            
             s.raise_for_status()
             data = s.json()
             code = data.get("status_code")  # FINISHED / IN_PROGRESS / ERROR
+
+            print(f"[INSTAGRAM STATUS] Tentative {attempt}/{max_retries} : {code}")
 
             if code == "FINISHED":
                 break
             if code == "ERROR":
                 error_msg = data.get("status", {}).get("error_message", "Raison inconnue")
-                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg} (Détails: {data})", str(video_path), title, description, {"creation_id": creation_id})
+                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg} (Détails: {data})", str(video_path), title, description, {"creation_id": creation_id, "video_url": video_url})
                 _log_result(res)
                 return res
 
             time.sleep(sleep_sec)
-        except Exception:
+        except Exception as e:
+            # CORRECTION : Ne plus cacher les erreurs silencieusement
+            last_error_log = str(e)
             time.sleep(sleep_sec)
     else:
-        res = SocialPostResult("instagram", False, "Instagram processing timed out", str(video_path), title, description, {"creation_id": creation_id})
+        # Si on arrive ici, c'est le timeout
+        error_msg = f"Instagram processing timed out after {max_retries * sleep_sec} seconds."
+        if last_error_log:
+            error_msg += f" Dernière erreur réseau: {last_error_log}"
+            
+        res = SocialPostResult("instagram", False, error_msg, str(video_path), title, description, {"creation_id": creation_id, "video_url": video_url})
         _log_result(res)
         return res
 
