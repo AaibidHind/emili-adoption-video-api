@@ -314,10 +314,96 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
 # =========================
 # TikTok placeholder
 # =========================
-def _post_to_tiktok_stub(video_path: Path, title: str, description: str) -> SocialPostResult:
-    res = SocialPostResult("tiktok", False, "TikTok auto-post not implemented yet.", str(video_path), title, description)
-    _log_result(res)
-    return res
+# =========================
+# TikTok via PULL_FROM_URL (Direct Post)
+# =========================
+def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
+    # 1. Récupération du token
+    token_file = Path("tokens.json")
+    access_token = None
+    if token_file.exists():
+        try:
+            tokens = json.loads(token_file.read_text(encoding="utf-8"))
+            tk_data = tokens.get("tiktok", {})
+            # On cherche le token selon le format de réponse
+            access_token = tk_data.get("access_token") or tk_data.get("data", {}).get("access_token")
+        except Exception:
+            pass
+            
+    if not access_token:
+        res = SocialPostResult("tiktok", False, "Missing TikTok access token. Allez sur /auth/tiktok/start d'abord.", str(video_path), title, description)
+        _log_result(res)
+        return res
+
+    # 2. Lien public Streamlit
+    video_url = _public_url_for_file(video_path)
+    if not video_url:
+        res = SocialPostResult("tiktok", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
+        _log_result(res)
+        return res
+
+    print(f"\n--- [TIKTOK DEBUG] Tentative de téléchargement depuis : {video_url} ---\n")
+
+    # 3. Requête API
+    url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json; charset=UTF-8"
+    }
+    
+    full_title = f"{title}\n\n{description}"
+    full_title = full_title[:2000] # Limite de sécurité
+
+    # Mode Sandbox = Privé obligatoire (SELF_ONLY)
+    privacy_level = os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")
+
+    payload = {
+        "post_info": {
+            "title": full_title,
+            "privacy_level": privacy_level,
+            "disable_duet": False,
+            "disable_comment": False,
+            "disable_stitch": False,
+            "video_cover_timestamp_ms": 1000
+        },
+        "source_info": {
+            "source": "PULL_FROM_URL",
+            "video_url": video_url
+        }
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        data = r.json()
+        
+        if "error" in data and data["error"].get("code") != "ok":
+            error_msg = data["error"].get("message", "Erreur inconnue")
+            res = SocialPostResult("tiktok", False, f"TikTok a rejeté la vidéo: {error_msg} (Détails: {data})", str(video_path), title, description, {"raw": data})
+            _log_result(res)
+            return res
+            
+        publish_id = data.get("data", {}).get("publish_id")
+        
+        res = SocialPostResult(
+            "tiktok", 
+            True, 
+            "TikTok publish initialized successfully.", 
+            str(video_path), 
+            title, 
+            description, 
+            {"publish_id": publish_id, "video_url": video_url, "privacy": privacy_level}
+        )
+        _log_result(res)
+        return res
+        
+    except Exception as e:
+        err_text = str(e)
+        if hasattr(e, "response") and e.response is not None:
+            err_text = e.response.text
+            
+        res = SocialPostResult("tiktok", False, f"TikTok API error: {err_text}", str(video_path), title, description)
+        _log_result(res)
+        return res
 
 
 # =========================
@@ -333,7 +419,7 @@ def post_to_platform(platform: str, video_path: Path, title: str, description: s
     elif normalized == "instagram":
         res = _post_to_instagram_via_url(video_path, title, description)
     elif normalized == "tiktok":
-        res = _post_to_tiktok_stub(video_path, title, description)
+        res = _post_to_tiktok_via_url(video_path, title, description) # <--- ICI
     else:
         res = SocialPostResult(normalized, False, f"Platform '{platform}' unknown", str(video_path), title, description)
         _log_result(res)
