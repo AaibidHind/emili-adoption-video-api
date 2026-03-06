@@ -39,7 +39,6 @@ def _log_result(res: SocialPostResult) -> None:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     safe_platform = res.platform.replace("/", "_").replace("\\", "_")
     out_path = LOG_DIR / f"{ts}_{safe_platform}.json"
-    # Ensure JSON-serializable
     payload = asdict(res)
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
@@ -122,7 +121,6 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
         response = None
         while response is None:
             status, response = req.next_chunk()
-            # optionally log status.progress()
 
         video_id = response.get("id")
         extra = {
@@ -141,7 +139,7 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
 
 
 # =========================
-# Facebook Page video via Direct File Upload (Correction)
+# Facebook Page video
 # =========================
 def _post_to_facebook_page_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     page_id = os.getenv("FACEBOOK_PAGE_ID")
@@ -154,7 +152,6 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
 
     url = f"https://graph.facebook.com/v19.0/{page_id}/videos"
     
-    # 1. On prépare le texte
     data = {
         "access_token": access_token,
         "description": description,
@@ -162,12 +159,10 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
     }
 
     try:
-        # 2. On ouvre le fichier vidéo pour l'envoyer comme pièce jointe
         with open(video_path, "rb") as video_file:
             files = {
                 "source": video_file
             }
-            # 3. On envoie tout à Facebook !
             r = requests.post(url, data=data, files=files, timeout=600)
             
         r.raise_for_status()
@@ -200,7 +195,7 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
         return res
 
 # =========================
-# Instagram (Reels/Video) via Container + Publish
+# Instagram
 # =========================
 def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     ig_user_id = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")
@@ -213,15 +208,13 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         return res
 
     if not video_url:
-        res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL (public domain for /out/...)", str(video_path), title, description)
+        res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
         return res
 
-    print(f"\n--- [INSTAGRAM DEBUG] Tentative de téléchargement depuis : {video_url} ---\n")
-
     caption = f"{title}\n\n{description}".strip()
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
-    media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")  # "REELS" or "VIDEO"
+    media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")
 
     # 1) Create container
     create_url = f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media"
@@ -265,13 +258,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             data = s.json()
             code = data.get("status_code")
 
-            print(f"[INSTAGRAM STATUS] Tentative {attempt}/{max_retries} : {code}")
-
             if code == "FINISHED":
                 break
             if code == "ERROR":
-                # --- CORRECTION VITALE ICI ---
-                # Graph API peut renvoyer 'status' comme un dict OU un texte simple.
                 raw_status = data.get("status", "Raison inconnue")
                 if isinstance(raw_status, dict):
                     error_msg = raw_status.get("error_message", str(raw_status))
@@ -285,7 +274,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             time.sleep(sleep_sec)
         except Exception as e:
             last_error_log = str(e)
-            print(f"[INSTAGRAM POLL ERROR] {e}")
             time.sleep(sleep_sec)
     else:
         error_msg = f"Instagram processing timed out. Dernière erreur: {last_error_log}"
@@ -312,10 +300,7 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
     return res
 
 # =========================
-# TikTok placeholder
-# =========================
-# =========================
-# TikTok via PULL_FROM_URL (Direct Post)
+# TikTok
 # =========================
 def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     # 1. Récupération du token
@@ -325,7 +310,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
         try:
             tokens = json.loads(token_file.read_text(encoding="utf-8"))
             tk_data = tokens.get("tiktok", {})
-            # On cherche le token selon le format de réponse
             access_token = tk_data.get("access_token") or tk_data.get("data", {}).get("access_token")
         except Exception:
             pass
@@ -342,8 +326,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
         _log_result(res)
         return res
 
-    print(f"\n--- [TIKTOK DEBUG] Tentative de téléchargement depuis : {video_url} ---\n")
-
     # 3. Requête API
     url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
     headers = {
@@ -354,7 +336,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
     full_title = f"{title}\n\n{description}"
     full_title = full_title[:2000] # Limite de sécurité
 
-    # Mode Sandbox = Privé obligatoire (SELF_ONLY)
     privacy_level = os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")
 
     payload = {
@@ -419,7 +400,7 @@ def post_to_platform(platform: str, video_path: Path, title: str, description: s
     elif normalized == "instagram":
         res = _post_to_instagram_via_url(video_path, title, description)
     elif normalized == "tiktok":
-        res = _post_to_tiktok_via_url(video_path, title, description) # <--- ICI
+        res = _post_to_tiktok_via_url(video_path, title, description)
     else:
         res = SocialPostResult(normalized, False, f"Platform '{platform}' unknown", str(video_path), title, description)
         _log_result(res)
