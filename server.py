@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -74,6 +74,16 @@ def delete_data():
         return HTMLResponse("<h2>Data Deletion</h2><p>Placeholder.</p>", status_code=200)
     return p.read_text(encoding="utf-8")
 
+# ==========================================
+# 🚨 ROUTE DE VÉRIFICATION TIKTOK 🚨
+# ==========================================
+@app.get("/tiktok4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR.txt")
+def verify_tiktok():
+    return Response(
+        content="tiktok-developers-site-verification=4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR", 
+        media_type="text/plain"
+    )
+
 @app.get("/{filename}.txt")
 def serve_txt(filename: str):
     file_path = STATIC_DIR / f"{filename}.txt"
@@ -102,7 +112,7 @@ def save_tokens(tokens: Dict[str, Any]):
 TOKENS: Dict[str, Any] = load_tokens()
 
 # ==========================================
-# ROUTES D'AUTHENTIFICATION TIKTOK (CORRIGÉES)
+# ROUTES D'AUTHENTIFICATION TIKTOK
 # ==========================================
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
