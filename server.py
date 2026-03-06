@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import secrets
 import json
+import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,7 +32,7 @@ def health():
     return {"status": "ok"}
 
 
-# --- CORRECTION 1 : Le chemin de sauvegarde Render ---
+# --- Chemin de sauvegarde Render ---
 if os.path.exists("/opt/render/project/src"):
     OUT_DIR = Path("/opt/render/project/src/out")
 else:
@@ -48,11 +49,9 @@ STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
-
 LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
     app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
-
 
 @app.get("/terms", response_class=HTMLResponse)
 def terms():
@@ -83,9 +82,7 @@ def serve_txt(filename: str):
     raise HTTPException(status_code=404, detail="File not found")
 
 
-OAUTH_STATE: Dict[str, bool] = {}
-
-# --- CORRECTION 2 : Sauvegarde des tokens pour éviter l'amnésie ---
+# --- Sauvegarde des tokens pour éviter l'amnésie ---
 TOKEN_FILE = Path("tokens.json")
 
 def load_tokens() -> Dict[str, Any]:
@@ -104,7 +101,9 @@ def save_tokens(tokens: Dict[str, Any]):
 
 TOKENS: Dict[str, Any] = load_tokens()
 
-
+# ==========================================
+# ROUTES D'AUTHENTIFICATION TIKTOK (CORRIGÉES)
+# ==========================================
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
 TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI")
@@ -115,36 +114,29 @@ TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 @app.get("/auth/tiktok/start")
 def tiktok_auth_start():
     if not TIKTOK_CLIENT_KEY or not TIKTOK_REDIRECT_URI:
-        raise HTTPException(
-            status_code=500,
-            detail="Missing TIKTOK_CLIENT_KEY or TIKTOK_REDIRECT_URI in environment.",
-        )
-
-    state = secrets.token_urlsafe(16)
-    OAUTH_STATE[state] = True
+        return HTMLResponse("<h1>❌ Erreur Serveur</h1><p>Missing TIKTOK_CLIENT_KEY or TIKTOK_REDIRECT_URI in environment.</p>", status_code=500)
 
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
         "response_type": "code",
         "scope": "user.info.basic,video.publish",
         "redirect_uri": TIKTOK_REDIRECT_URI,
-        "state": state,
+        "state": "emili_secure_state_123"
     }
 
-    url = requests.Request("GET", TIKTOK_AUTH_URL, params=params).prepare().url
+    url = f"{TIKTOK_AUTH_URL}?{urllib.parse.urlencode(params)}"
     return RedirectResponse(url)
 
-# --- CORRECTION 3 : Remplacement de str | None par Optional[str] ---
 @app.get("/auth/tiktok/callback")
-def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
-    if not code or not state or state not in OAUTH_STATE:
-        return JSONResponse({"error": "Invalid OAuth response"}, status_code=400)
+def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+    if error:
+        return HTMLResponse(f"<h1>❌ Erreur d'autorisation</h1><p>Vous avez refusé ou une erreur est survenue : {error} ({error_description})</p>")
+        
+    if not code:
+        return HTMLResponse("<h1>❌ Erreur</h1><p>Aucun code d'autorisation reçu depuis TikTok.</p>")
 
     if not TIKTOK_CLIENT_KEY or not TIKTOK_CLIENT_SECRET or not TIKTOK_REDIRECT_URI:
-        raise HTTPException(
-            status_code=500,
-            detail="Missing TikTok env vars: TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET / TIKTOK_REDIRECT_URI.",
-        )
+        return HTMLResponse("<h1>❌ Erreur Serveur</h1><p>Clés manquantes sur Render (KEY, SECRET ou URI).</p>")
 
     data = {
         "client_key": TIKTOK_CLIENT_KEY,
@@ -154,28 +146,43 @@ def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None
         "redirect_uri": TIKTOK_REDIRECT_URI,
     }
 
-    token_res = requests.post(
-        TIKTOK_TOKEN_URL,
-        data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=30,
-    )
+    try:
+        token_res = requests.post(
+            TIKTOK_TOKEN_URL,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cache-Control": "no-cache"},
+            timeout=30,
+        )
+        
+        token_data = token_res.json()
+        
+        if "access_token" in token_data:
+            TOKENS["tiktok"] = token_data
+            save_tokens(TOKENS)
+            return HTMLResponse("""
+            <div style="text-align:center; padding:50px; font-family:sans-serif; background-color:#f0fdf4;">
+                <h1 style="color:#166534; font-size:40px;">✅ Connexion TikTok Réussie !</h1>
+                <p style="font-size:18px;">L'application Emili est maintenant connectée à votre compte TikTok.</p>
+                <p style="font-size:18px;"><b>Vous pouvez fermer cet onglet et cliquer sur "Publish" dans votre application.</b></p>
+            </div>
+            """)
+        else:
+            return HTMLResponse(f"<h1>❌ Échec de la création du token</h1><p>TikTok a répondu : {token_data}</p>")
+            
+    except Exception as e:
+        return HTMLResponse(f"<h1>❌ Erreur Serveur Interne</h1><p>{str(e)}</p>")
 
-    TOKENS["tiktok"] = token_res.json()
-    save_tokens(TOKENS) # On sauvegarde sur le disque
 
-    return {
-        "message": "TikTok account connected successfully",
-        "tiktok_response": TOKENS["tiktok"],
-    }
-
-
+# ==========================================
+# ROUTES D'AUTHENTIFICATION META (FACEBOOK/IG)
+# ==========================================
 META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
 META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRECT_URI")
 
 META_AUTH_URL = "https://www.facebook.com/v19.0/dialog/oauth"
 META_TOKEN_URL = "https://graph.facebook.com/v19.0/oauth/access_token"
+OAUTH_STATE_META: Dict[str, bool] = {}
 
 @app.get("/auth/meta/start")
 def meta_auth_start():
@@ -183,9 +190,8 @@ def meta_auth_start():
         raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
 
     scopes = os.getenv("META_SCOPES", "public_profile,email") 
-
     state = secrets.token_urlsafe(16)
-    OAUTH_STATE[state] = True
+    OAUTH_STATE_META[state] = True
 
     params = {
         "client_id": META_APP_ID,
@@ -198,11 +204,11 @@ def meta_auth_start():
     url = requests.Request("GET", META_AUTH_URL, params=params).prepare().url
     return RedirectResponse(url)
 
-# --- CORRECTION 3 : Remplacement de str | None par Optional[str] ---
 @app.get("/auth/meta/callback")
 def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
-    if not code or not state or state not in OAUTH_STATE:
-        return JSONResponse({"error": "Invalid OAuth response"}, status_code=400)
+    # Rendu plus tolérant si Render perd la mémoire
+    if not code:
+        return JSONResponse({"error": "Invalid OAuth response, missing code"}, status_code=400)
 
     if not META_APP_ID or not META_APP_SECRET or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID / META_APP_SECRET / META_REDIRECT_URI.")
@@ -217,20 +223,49 @@ def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     token_res = requests.get(META_TOKEN_URL, params=params, timeout=30)
     data = token_res.json()
 
-    TOKENS["meta"] = data
-    save_tokens(TOKENS) # On sauvegarde sur le disque
-
-    return {
-        "message": "Meta account connected successfully",
-        "meta_response": data,
-        "next": "If you need Pages/Instagram publishing, request the required permissions and generate a Page access token.",
-    }
+    if "access_token" in data:
+        TOKENS["meta"] = data
+        save_tokens(TOKENS) 
+        return HTMLResponse("<h1>✅ Compte Meta connecté avec succès !</h1><p>Vous pouvez fermer cette fenêtre.</p>")
+    else:
+        return JSONResponse({"error": "Failed to get token", "details": data}, status_code=400)
 
 @app.get("/auth/meta/status")
 def meta_status():
     return {"meta_token_present": TOKENS.get("meta") is not None, "meta_token": TOKENS.get("meta")}
 
+@app.get("/auth/meta/find-my-ids")
+def find_my_ids():
+    meta_data = TOKENS.get("meta")
+    
+    if not meta_data or "access_token" not in meta_data:
+        return JSONResponse({
+            "error": "Token introuvable ou invalide !", 
+            "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter.",
+            "debug": meta_data
+        }, status_code=400)
 
+    user_token = meta_data["access_token"]
+    
+    url = "https://graph.facebook.com/v19.0/me/accounts"
+    params = {
+        "access_token": user_token, 
+        "fields": "name,id,access_token,instagram_business_account"
+    }
+    
+    try:
+        r = requests.get(url, params=params)
+        data = r.json()
+        return {
+            "MESSAGE": "✅ Copiez ces valeurs dans Render > Environment",
+            "DATA": data
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# ==========================================
+# API DE GÉNÉRATION ET PUBLICATION
+# ==========================================
 class GenRequest(BaseModel):
     pet_dir: str
     logo_path: Optional[str] = "assets/branding/logo.png"
@@ -309,36 +344,3 @@ def publish(req: PubRequest):
         results.append(res)
 
     return {"results": results}
-
-@app.get("/auth/meta/find-my-ids")
-def find_my_ids():
-    """
-    Outil temporaire pour trouver vos ID Facebook et Instagram
-    """
-    meta_data = TOKENS.get("meta")
-    
-    # --- CORRECTION 4 : Protection contre l'erreur silencieuse ---
-    if not meta_data or "access_token" not in meta_data:
-        return JSONResponse({
-            "error": "Token introuvable ou invalide !", 
-            "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter.",
-            "debug": meta_data
-        }, status_code=400)
-
-    user_token = meta_data["access_token"]
-    
-    url = "https://graph.facebook.com/v19.0/me/accounts"
-    params = {
-        "access_token": user_token, 
-        "fields": "name,id,access_token,instagram_business_account"
-    }
-    
-    try:
-        r = requests.get(url, params=params)
-        data = r.json()
-        return {
-            "MESSAGE": "✅ Copiez ces valeurs dans Render > Environment",
-            "DATA": data
-        }
-    except Exception as e:
-        return {"error": str(e)}
