@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 app = FastAPI(title="Emili TikTok Verification Service")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def home():
-    return HTMLResponse("""
+    html = """
     <html>
       <head><title>Emili TikTok Integration</title></head>
       <body>
@@ -14,15 +14,16 @@ def home():
         <p>This service is used for TikTok domain verification.</p>
       </body>
     </html>
-    """)
+    """
+    return HTMLResponse(content=html)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
-    return {"status": "ok"}
+    return JSONResponse({"status": "ok"})
 
 
-@app.get("/terms")
+@app.api_route("/terms", methods=["GET", "HEAD"])
 def terms():
     return HTMLResponse("""
     <html>
@@ -34,7 +35,7 @@ def terms():
     """)
 
 
-@app.get("/privacy")
+@app.api_route("/privacy", methods=["GET", "HEAD"])
 def privacy():
     return HTMLResponse("""
     <html>
@@ -47,15 +48,14 @@ def privacy():
 
 
 # TikTok verification file
-@app.get("/tiktokyzM3x8mwvilX8D2GfWarSVk6vxFnSKB5.txt")
+@app.api_route("/tiktokyzM3x8mwvilX8D2GfWarSVk6vxFnSKB5.txt", methods=["GET", "HEAD"])
 def verify_tiktok():
-    return Response(
-        content="tiktok-developers-site-verification=yzM3x8mwvilX8D2GfWarSVk6vxFnSKB5",
-        media_type="text/plain"
+    return PlainTextResponse(
+        "tiktok-developers-site-verification=yzM3x8mwvilX8D2GfWarSVk6vxFnSKB5"
     )
 
 
-@app.get("/auth/tiktok/callback")
+@app.api_route("/auth/tiktok/callback", methods=["GET", "HEAD"])
 def tiktok_callback(
     code: str = "",
     state: str = "",
