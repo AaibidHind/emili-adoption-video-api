@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 app = FastAPI(title="Emili TikTok Verification Service")
@@ -6,7 +6,7 @@ app = FastAPI(title="Emili TikTok Verification Service")
 
 @app.api_route("/", methods=["GET", "HEAD"])
 def home():
-    html = """
+    return HTMLResponse("""
     <html>
       <head><title>Emili TikTok Integration</title></head>
       <body>
@@ -14,8 +14,7 @@ def home():
         <p>This service is used for TikTok domain verification.</p>
       </body>
     </html>
-    """
-    return HTMLResponse(content=html)
+    """)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])
