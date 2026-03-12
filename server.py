@@ -75,12 +75,20 @@ def delete_data():
     return p.read_text(encoding="utf-8")
 
 # ==========================================
-# 🚨 ROUTE DE VÉRIFICATION TIKTOK 🚨
+# 🚨 ROUTES DE VÉRIFICATION TIKTOK 🚨
 # ==========================================
+
 @app.get("/tiktok4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR.txt")
-def verify_tiktok():
+def verify_tiktok_old():
     return Response(
-        content="tiktok-developers-site-verification=4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR", 
+        content="tiktok-developers-site-verification=4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR",
+        media_type="text/plain"
+    )
+
+@app.get("/J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS.txt")
+def verify_tiktok_new():
+    return Response(
+        content="tiktok-developers-site-verification=J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS",
         media_type="text/plain"
     )
 
