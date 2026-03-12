@@ -11,7 +11,7 @@ def home():
       <head><title>Emili TikTok Integration</title></head>
       <body>
         <h1>Emili TikTok Integration</h1>
-        <p>This service is used for TikTok domain verification and OAuth callback handling.</p>
+        <p>This service is used for TikTok domain verification.</p>
       </body>
     </html>
     """)
@@ -26,7 +26,6 @@ def health():
 def terms():
     return HTMLResponse("""
     <html>
-      <head><title>Terms of Service</title></head>
       <body>
         <h1>Terms of Service</h1>
         <p>Emili Terms of Service.</p>
@@ -39,7 +38,6 @@ def terms():
 def privacy():
     return HTMLResponse("""
     <html>
-      <head><title>Privacy Policy</title></head>
       <body>
         <h1>Privacy Policy</h1>
         <p>Emili Privacy Policy.</p>
@@ -48,20 +46,11 @@ def privacy():
     """)
 
 
-# First TikTok verification file
-@app.get("/J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS.txt")
-def verify_tiktok_first():
+# TikTok verification file
+@app.get("/tiktokyzM3x8mwvilX8D2GfWarSVk6vxFnSKB5.txt")
+def verify_tiktok():
     return Response(
-        content="tiktok-developers-site-verification=J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS",
-        media_type="text/plain"
-    )
-
-
-# Second TikTok verification file
-@app.get("/tiktokyzM3x8mwviIX8D2GfWarSVk6vxFnSKB5.txt")
-def verify_tiktok_second():
-    return Response(
-        content="tiktok-developers-site-verification=yzM3x8mwviIX8D2GfWarSVk6vxFnSKB5",
+        content="tiktok-developers-site-verification=yzM3x8mwvilX8D2GfWarSVk6vxFnSKB5",
         media_type="text/plain"
     )
 
