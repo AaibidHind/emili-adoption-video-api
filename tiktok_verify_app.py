@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI(title="Emili TikTok Verification Service")
 
+
 @app.get("/")
 def home():
     return HTMLResponse("""
@@ -15,9 +16,11 @@ def home():
     </html>
     """)
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/terms")
 def terms():
@@ -31,6 +34,7 @@ def terms():
     </html>
     """)
 
+
 @app.get("/privacy")
 def privacy():
     return HTMLResponse("""
@@ -43,6 +47,17 @@ def privacy():
     </html>
     """)
 
+
+# First TikTok verification file
+@app.get("/J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS.txt")
+def verify_tiktok_first():
+    return Response(
+        content="tiktok-developers-site-verification=J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS",
+        media_type="text/plain"
+    )
+
+
+# Second TikTok verification file
 @app.get("/tiktokyzM3x8mwviIX8D2GfWarSVk6vxFnSKB5.txt")
 def verify_tiktok_second():
     return Response(
@@ -50,8 +65,14 @@ def verify_tiktok_second():
         media_type="text/plain"
     )
 
+
 @app.get("/auth/tiktok/callback")
-def tiktok_callback(code: str = "", state: str = "", error: str = "", error_description: str = ""):
+def tiktok_callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    error_description: str = ""
+):
     return JSONResponse({
         "status": "ok",
         "message": "TikTok callback received",
