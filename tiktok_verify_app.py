@@ -43,10 +43,10 @@ def privacy():
     </html>
     """)
 
-@app.get("/J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS.txt")
-def verify_tiktok():
+@app.get("/tiktokyzM3x8mwviIX8D2GfWarSVk6vxFnSKB5.txt")
+def verify_tiktok_second():
     return Response(
-        content="tiktok-developers-site-verification=J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS",
+        content="tiktok-developers-site-verification=yzM3x8mwviIX8D2GfWarSVk6vxFnSKB5",
         media_type="text/plain"
     )
 
