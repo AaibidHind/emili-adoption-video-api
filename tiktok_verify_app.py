@@ -46,7 +46,7 @@ def privacy():
     """)
 
 
-# TikTok verification file
+# ✅ TikTok verification file (EXACT MATCH)
 @app.api_route("/tiktokyzM3x8mwvilX8D2GfWarSVk6vxFnSKB5.txt", methods=["GET", "HEAD"])
 def verify_tiktok():
     return PlainTextResponse(
