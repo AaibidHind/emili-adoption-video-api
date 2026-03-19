@@ -146,15 +146,42 @@ def tiktok_auth_start():
     return RedirectResponse(url)
 
 @app.get("/auth/tiktok/callback")
-def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+def tiktok_auth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None
+):
     if error:
-        return HTMLResponse(f"<h1>❌ Erreur d'autorisation</h1><p>Vous avez refusé ou une erreur est survenue : {error} ({error_description})</p>")
-        
+        return HTMLResponse(f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px;">
+            <h1>❌ TikTok Authorization Error</h1>
+            <p><strong>Error:</strong> {error}</p>
+            <p><strong>Description:</strong> {error_description}</p>
+          </body>
+        </html>
+        """)
+
     if not code:
-        return HTMLResponse("<h1>❌ Erreur</h1><p>Aucun code d'autorisation reçu depuis TikTok.</p>")
+        return HTMLResponse("""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px;">
+            <h1>TikTok OAuth Callback</h1>
+            <p><strong>Status:</strong> No authorization code received</p>
+          </body>
+        </html>
+        """)
 
     if not TIKTOK_CLIENT_KEY or not TIKTOK_CLIENT_SECRET or not TIKTOK_REDIRECT_URI:
-        return HTMLResponse("<h1>❌ Erreur Serveur</h1><p>Clés manquantes sur Render (KEY, SECRET ou URI).</p>")
+        return HTMLResponse("""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px;">
+            <h1>❌ Server Configuration Error</h1>
+            <p>Missing TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, or TIKTOK_REDIRECT_URI.</p>
+          </body>
+        </html>
+        """)
 
     data = {
         "client_key": TIKTOK_CLIENT_KEY,
@@ -168,27 +195,49 @@ def tiktok_auth_callback(code: Optional[str] = None, state: Optional[str] = None
         token_res = requests.post(
             TIKTOK_TOKEN_URL,
             data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded", "Cache-Control": "no-cache"},
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Cache-Control": "no-cache"
+            },
             timeout=30,
         )
-        
+
         token_data = token_res.json()
-        
+
         if "access_token" in token_data:
             TOKENS["tiktok"] = token_data
             save_tokens(TOKENS)
-            return HTMLResponse("""
-            <div style="text-align:center; padding:50px; font-family:sans-serif; background-color:#f0fdf4;">
-                <h1 style="color:#166534; font-size:40px;">✅ Connexion TikTok Réussie !</h1>
-                <p style="font-size:18px;">L'application Emili est maintenant connectée à votre compte TikTok.</p>
-                <p style="font-size:18px;"><b>Vous pouvez fermer cet onglet et cliquer sur "Publish" dans votre application.</b></p>
-            </div>
+            return HTMLResponse(f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #f0fdf4;">
+                <h1 style="color: #166534;">✅ TikTok Connected Successfully</h1>
+                <p><strong>Status:</strong> OK</p>
+                <p><strong>Authorization code received:</strong> {code}</p>
+                <p><strong>Application:</strong> Emili Adoption Video Generator</p>
+                <p>You can now close this page and continue in the application.</p>
+              </body>
+            </html>
             """)
         else:
-            return HTMLResponse(f"<h1>❌ Échec de la création du token</h1><p>TikTok a répondu : {token_data}</p>")
-            
+            return HTMLResponse(f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; padding: 40px;">
+                <h1>❌ TikTok Token Exchange Failed</h1>
+                <p><strong>Status:</strong> Token not created</p>
+                <pre>{json.dumps(token_data, indent=2)}</pre>
+              </body>
+            </html>
+            """)
+
     except Exception as e:
-        return HTMLResponse(f"<h1>❌ Erreur Serveur Interne</h1><p>{str(e)}</p>")
+        return HTMLResponse(f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px;">
+            <h1>❌ Internal Server Error</h1>
+            <p><strong>Exception:</strong> {str(e)}</p>
+          </body>
+        </html>
+        """)
 
 
 # ==========================================
