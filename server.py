@@ -152,13 +152,27 @@ def tiktok_auth_callback(
     error: Optional[str] = None,
     error_description: Optional[str] = None
 ):
+    # Demo-friendly view when you open /auth/tiktok/callback?code=test
+    if code == "test":
+        return HTMLResponse("""
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #f8fafc;">
+            <h1 style="color: #166534;">✅ TikTok OAuth Callback</h1>
+            <p><strong>Status:</strong> Demo mode OK</p>
+            <p><strong>Authorization code received:</strong> test</p>
+            <p><strong>Application:</strong> Emili Adoption Video Generator</p>
+            <p>This page demonstrates that the TikTok callback endpoint is active and reachable.</p>
+          </body>
+        </html>
+        """)
+
     if error:
         return HTMLResponse(f"""
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px;">
-            <h1>❌ TikTok Authorization Error</h1>
+          <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
+            <h1 style="color: #b91c1c;">❌ TikTok Authorization Error</h1>
             <p><strong>Error:</strong> {error}</p>
-            <p><strong>Description:</strong> {error_description}</p>
+            <p><strong>Description:</strong> {error_description or "No description provided"}</p>
           </body>
         </html>
         """)
@@ -166,9 +180,10 @@ def tiktok_auth_callback(
     if not code:
         return HTMLResponse("""
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px;">
+          <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #f8fafc;">
             <h1>TikTok OAuth Callback</h1>
             <p><strong>Status:</strong> No authorization code received</p>
+            <p>Open this endpoint with a valid TikTok authorization code to continue.</p>
           </body>
         </html>
         """)
@@ -176,8 +191,8 @@ def tiktok_auth_callback(
     if not TIKTOK_CLIENT_KEY or not TIKTOK_CLIENT_SECRET or not TIKTOK_REDIRECT_URI:
         return HTMLResponse("""
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px;">
-            <h1>❌ Server Configuration Error</h1>
+          <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
+            <h1 style="color: #b91c1c;">❌ Server Configuration Error</h1>
             <p>Missing TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, or TIKTOK_REDIRECT_URI.</p>
           </body>
         </html>
@@ -221,10 +236,10 @@ def tiktok_auth_callback(
         else:
             return HTMLResponse(f"""
             <html>
-              <body style="font-family: Arial, sans-serif; padding: 40px;">
-                <h1>❌ TikTok Token Exchange Failed</h1>
+              <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
+                <h1 style="color: #b91c1c;">❌ TikTok Token Exchange Failed</h1>
                 <p><strong>Status:</strong> Token not created</p>
-                <pre>{json.dumps(token_data, indent=2)}</pre>
+                <pre style="white-space: pre-wrap; background: #f3f4f6; padding: 16px; border-radius: 8px;">{json.dumps(token_data, indent=2)}</pre>
               </body>
             </html>
             """)
@@ -232,13 +247,12 @@ def tiktok_auth_callback(
     except Exception as e:
         return HTMLResponse(f"""
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px;">
-            <h1>❌ Internal Server Error</h1>
+          <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
+            <h1 style="color: #b91c1c;">❌ Internal Server Error</h1>
             <p><strong>Exception:</strong> {str(e)}</p>
           </body>
         </html>
         """)
-
 
 # ==========================================
 # ROUTES D'AUTHENTIFICATION META (FACEBOOK/IG)
