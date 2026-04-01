@@ -132,7 +132,7 @@ TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 @app.get("/auth/tiktok/start")
 def tiktok_auth_start():
     if not TIKTOK_CLIENT_KEY or not TIKTOK_REDIRECT_URI:
-        return HTMLResponse("<h1>❌ Erreur Serveur</h1><p>Missing TIKTOK_CLIENT_KEY or TIKTOK_REDIRECT_URI in environment.</p>", status_code=500)
+        return HTMLResponse("<h1>❌ Erreur Serveur</h1><p>Configuration manquante dans Render.</p>", status_code=500)
 
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
@@ -143,7 +143,22 @@ def tiktok_auth_start():
     }
 
     url = f"{TIKTOK_AUTH_URL}?{urllib.parse.urlencode(params)}"
-    return RedirectResponse(url)
+    
+    # On renvoie une page avec un bouton pour éviter le blocage du navigateur
+    html_content = f"""
+    <html>
+        <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background-color:#f9fafb; margin:0;">
+            <div style="text-align:center; padding:40px; background:white; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+                <h2 style="color:#333;">Connexion à TikTok</h2>
+                <p style="color:#666;">Cliquez ci-dessous pour autoriser l'application.</p>
+                <a href="{url}" style="display:inline-block; padding:15px 30px; background-color:#fe2c55; color:#ffffff; text-decoration:none; font-size:18px; font-weight:bold; border-radius:8px; margin-top:20px;">
+                    Se connecter à TikTok
+                </a>
+            </div>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @app.get("/auth/tiktok/callback")
 def tiktok_auth_callback(
