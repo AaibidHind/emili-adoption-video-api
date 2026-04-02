@@ -78,17 +78,17 @@ def delete_data():
 # 🚨 ROUTES DE VÉRIFICATION TIKTOK 🚨
 # ==========================================
 
-@app.get("/tiktok4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR.txt")
-def verify_tiktok_old():
+@app.get("/terms/tiktokbMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV.txt")
+def verify_tiktok_terms_new():
     return Response(
-        content="tiktok-developers-site-verification=4ovEyQsvczY4iwUxxLHT6LK7YAnzrViR",
+        content="tiktok-developers-site-verification=bMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV",
         media_type="text/plain"
     )
 
-@app.get("/J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS.txt")
-def verify_tiktok_new():
+@app.get("/tiktokbMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV.txt")
+def verify_tiktok_root_new():
     return Response(
-        content="tiktok-developers-site-verification=J2aHcLv6hBETMBR6RAOHVU3KOBaRnfWS",
+        content="tiktok-developers-site-verification=bMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV",
         media_type="text/plain"
     )
 
