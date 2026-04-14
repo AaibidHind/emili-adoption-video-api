@@ -55,17 +55,23 @@ if LEGAL_DIR.exists():
 
 @app.get("/terms", response_class=HTMLResponse)
 def terms():
-    p = Path("legal/terms.html")
-    if not p.exists():
-        return HTMLResponse("<h2>Terms of Service</h2><p>Placeholder.</p>", status_code=200)
-    return p.read_text(encoding="utf-8")
+    return HTMLResponse("""
+    <h2>Terms of Service</h2>
+    <p>Emili is a service that generates adoption videos for animal shelters.</p>
+    <p>Users are responsible for the content they upload and publish.</p>
+    <p>Content must not violate any laws or platform policies.</p>
+    <p>We reserve the right to restrict access in case of misuse.</p>
+    """)
 
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy():
-    p = Path("legal/privacy.html")
-    if not p.exists():
-        return HTMLResponse("<h2>Privacy Policy</h2><p>Placeholder.</p>", status_code=200)
-    return p.read_text(encoding="utf-8")
+    return HTMLResponse("""
+    <h2>Privacy Policy</h2>
+    <p>We collect minimal data required for authentication and service functionality.</p>
+    <p>TikTok account data is used only to upload videos authorized by the user.</p>
+    <p>No personal data is sold or shared with third parties.</p>
+    <p>Users can revoke access at any time.</p>
+    """)
 
 @app.get("/delete-data", response_class=HTMLResponse)
 def delete_data():
