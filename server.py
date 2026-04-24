@@ -53,35 +53,35 @@ LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
     app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
 
+
+# ==========================================
+# LEGAL PAGES — reads from legal/ HTML files
+# ==========================================
+
 @app.get("/terms", response_class=HTMLResponse)
 def terms():
-    return HTMLResponse("""
-    <h2>Terms of Service</h2>
-    <p>Emili is a service that generates adoption videos for animal shelters.</p>
-    <p>Users are responsible for the content they upload and publish.</p>
-    <p>Content must not violate any laws or platform policies.</p>
-    <p>We reserve the right to restrict access in case of misuse.</p>
-    """)
+    p = Path("legal/terms.html")
+    if p.exists():
+        return HTMLResponse(p.read_text(encoding="utf-8"))
+    return HTMLResponse("<h2>Terms of Service</h2><p>Contact hind@emili.net</p>")
 
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy():
-    return HTMLResponse("""
-    <h2>Privacy Policy</h2>
-    <p>We collect minimal data required for authentication and service functionality.</p>
-    <p>TikTok account data is used only to upload videos authorized by the user.</p>
-    <p>No personal data is sold or shared with third parties.</p>
-    <p>Users can revoke access at any time.</p>
-    """)
+    p = Path("legal/privacy.html")
+    if p.exists():
+        return HTMLResponse(p.read_text(encoding="utf-8"))
+    return HTMLResponse("<h2>Privacy Policy</h2><p>Contact hind@emili.net</p>")
 
 @app.get("/delete-data", response_class=HTMLResponse)
 def delete_data():
     p = Path("legal/delete-data.html")
-    if not p.exists():
-        return HTMLResponse("<h2>Data Deletion</h2><p>Placeholder.</p>", status_code=200)
-    return p.read_text(encoding="utf-8")
+    if p.exists():
+        return HTMLResponse(p.read_text(encoding="utf-8"))
+    return HTMLResponse("<h2>Data Deletion</h2><p>Contact hind@emili.net</p>")
+
 
 # ==========================================
-# 🚨 ROUTES DE VÉRIFICATION TIKTOK 🚨
+# TIKTOK DOMAIN VERIFICATION ROUTES
 # ==========================================
 
 @app.get("/terms/tiktokbMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV.txt")
@@ -125,6 +125,7 @@ def save_tokens(tokens: Dict[str, Any]):
 
 TOKENS: Dict[str, Any] = load_tokens()
 
+
 # ==========================================
 # ROUTES D'AUTHENTIFICATION TIKTOK
 # ==========================================
@@ -149,8 +150,7 @@ def tiktok_auth_start():
     }
 
     url = f"{TIKTOK_AUTH_URL}?{urllib.parse.urlencode(params)}"
-    
-    # On renvoie une page avec un bouton pour éviter le blocage du navigateur
+
     html_content = f"""
     <html>
         <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background-color:#f9fafb; margin:0;">
@@ -182,7 +182,6 @@ def tiktok_auth_callback(
     if not TIKTOK_CLIENT_KEY or not TIKTOK_CLIENT_SECRET or not TIKTOK_REDIRECT_URI:
         return HTMLResponse("<h1>❌ Server Configuration Error</h1><p>Missing API Keys in Render.</p>")
 
-    # Préparation de la requête pour échanger le 'code' contre un 'access_token'
     data = {
         "client_key": TIKTOK_CLIENT_KEY,
         "client_secret": TIKTOK_CLIENT_SECRET,
@@ -204,7 +203,6 @@ def tiktok_auth_callback(
 
         token_data = token_res.json()
 
-        # Si TikTok nous donne bien un token
         if "access_token" in token_data:
             TOKENS["tiktok"] = token_data
             save_tokens(TOKENS)
@@ -217,7 +215,6 @@ def tiktok_auth_callback(
             </html>
             """)
         else:
-            # Si TikTok refuse l'échange (ex: code expiré, mauvaise Redirect URI)
             return HTMLResponse(f"""
             <html>
               <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
@@ -229,6 +226,8 @@ def tiktok_auth_callback(
 
     except Exception as e:
         return HTMLResponse(f"<h1>❌ Internal Server Error</h1><p>{str(e)}</p>")
+
+
 # ==========================================
 # ROUTES D'AUTHENTIFICATION META (FACEBOOK/IG)
 # ==========================================
@@ -245,7 +244,7 @@ def meta_auth_start():
     if not META_APP_ID or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
 
-    scopes = os.getenv("META_SCOPES", "public_profile,email") 
+    scopes = os.getenv("META_SCOPES", "public_profile,email")
     state = secrets.token_urlsafe(16)
     OAUTH_STATE_META[state] = True
 
@@ -262,7 +261,6 @@ def meta_auth_start():
 
 @app.get("/auth/meta/callback")
 def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
-    # Rendu plus tolérant si Render perd la mémoire
     if not code:
         return JSONResponse({"error": "Invalid OAuth response, missing code"}, status_code=400)
 
@@ -281,7 +279,7 @@ def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
 
     if "access_token" in data:
         TOKENS["meta"] = data
-        save_tokens(TOKENS) 
+        save_tokens(TOKENS)
         return HTMLResponse("<h1>✅ Compte Meta connecté avec succès !</h1><p>Vous pouvez fermer cette fenêtre.</p>")
     else:
         return JSONResponse({"error": "Failed to get token", "details": data}, status_code=400)
@@ -293,22 +291,22 @@ def meta_status():
 @app.get("/auth/meta/find-my-ids")
 def find_my_ids():
     meta_data = TOKENS.get("meta")
-    
+
     if not meta_data or "access_token" not in meta_data:
         return JSONResponse({
-            "error": "Token introuvable ou invalide !", 
+            "error": "Token introuvable ou invalide !",
             "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter.",
             "debug": meta_data
         }, status_code=400)
 
     user_token = meta_data["access_token"]
-    
+
     url = "https://graph.facebook.com/v19.0/me/accounts"
     params = {
-        "access_token": user_token, 
+        "access_token": user_token,
         "fields": "name,id,access_token,instagram_business_account"
     }
-    
+
     try:
         r = requests.get(url, params=params)
         data = r.json()
@@ -318,6 +316,7 @@ def find_my_ids():
         }
     except Exception as e:
         return {"error": str(e)}
+
 
 # ==========================================
 # API DE GÉNÉRATION ET PUBLICATION
