@@ -7,6 +7,7 @@ import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
+import httpx
 import requests
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -19,54 +20,38 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-@app.get("/")
-def root():
-    return JSONResponse({
-        "status": "ok",
-        "message": "Emili API is running",
-        "docs": "/docs"
-    })
+# Streamlit runs internally on 8501, FastAPI is the public-facing server
+STREAMLIT_BASE = "http://127.0.0.1:8501"
+
+# These prefixes are handled by FastAPI — everything else proxies to Streamlit
+FASTAPI_PREFIXES = (
+    "/terms",
+    "/privacy",
+    "/delete-data",
+    "/legal",
+    "/static",
+    "/assets",
+    "/out",
+    "/health",
+    "/docs",
+    "/openapi",
+    "/auth",
+    "/generate",
+    "/publish",
+)
+
+
+# ==========================================
+# HEALTH
+# ==========================================
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/app", response_class=HTMLResponse)
-def streamlit_app():
-    """Redirect /app to the Streamlit UI on port 8501"""
-    return HTMLResponse("""
-    <html>
-      <head><meta http-equiv="refresh" content="0; url=http://localhost:8501" /></head>
-      <body><p>Loading Emili app... <a href="http://localhost:8501">Click here if not redirected.</a></p></body>
-    </html>
-    """)
-
-
-# --- Chemin de sauvegarde Render ---
-if os.path.exists("/opt/render/project/src"):
-    OUT_DIR = Path("/opt/render/project/src/out")
-else:
-    OUT_DIR = Path("out").resolve()
-
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
-
-ASSETS_DIR = Path("assets")
-if ASSETS_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
-
-STATIC_DIR = Path("static")
-STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
-
-LEGAL_DIR = Path("legal")
-if LEGAL_DIR.exists():
-    app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
-
-
 # ==========================================
-# LEGAL PAGES — reads from legal/ HTML files
+# LEGAL PAGES
 # ==========================================
 
 @app.get("/terms", response_class=HTMLResponse)
@@ -92,7 +77,7 @@ def delete_data():
 
 
 # ==========================================
-# TIKTOK DOMAIN VERIFICATION ROUTES
+# TIKTOK DOMAIN VERIFICATION
 # ==========================================
 
 @app.get("/terms/tiktokbMAqnZ7SmHY8UcJAC3WSKhv9FtDrJSTV.txt")
@@ -117,7 +102,80 @@ def serve_txt(filename: str):
     raise HTTPException(status_code=404, detail="File not found")
 
 
-# --- Sauvegarde des tokens pour éviter l'amnésie ---
+# ==========================================
+# STATIC FILE MOUNTS
+# ==========================================
+
+if os.path.exists("/opt/render/project/src"):
+    OUT_DIR = Path("/opt/render/project/src/out")
+else:
+    OUT_DIR = Path("out").resolve()
+
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
+
+ASSETS_DIR = Path("assets")
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+
+STATIC_DIR = Path("static")
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
+
+LEGAL_DIR = Path("legal")
+if LEGAL_DIR.exists():
+    app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
+
+
+# ==========================================
+# REVERSE PROXY → STREAMLIT (catch-all)
+# ==========================================
+
+async def _proxy_to_streamlit(request: Request) -> Response:
+    path = request.url.path
+    query = request.url.query
+    target_url = f"{STREAMLIT_BASE}{path}"
+    if query:
+        target_url += f"?{query}"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            proxy_req = client.build_request(
+                method=request.method,
+                url=target_url,
+                headers={k: v for k, v in request.headers.items() if k.lower() != "host"},
+                content=await request.body(),
+            )
+            proxy_resp = await client.send(proxy_req)
+            return Response(
+                content=proxy_resp.content,
+                status_code=proxy_resp.status_code,
+                headers=dict(proxy_resp.headers),
+            )
+    except Exception:
+        return HTMLResponse(
+            "<h2>Emili App</h2><p>Starting up... please refresh in a few seconds.</p>",
+            status_code=503,
+        )
+
+
+@app.api_route(
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
+)
+async def proxy_streamlit(path: str, request: Request):
+    """Proxy everything not matched above to Streamlit."""
+    full_path = "/" + path
+    for prefix in FASTAPI_PREFIXES:
+        if full_path.startswith(prefix):
+            raise HTTPException(status_code=404, detail="Not found")
+    return await _proxy_to_streamlit(request)
+
+
+# ==========================================
+# TOKEN STORAGE
+# ==========================================
+
 TOKEN_FILE = Path("tokens.json")
 
 def load_tokens() -> Dict[str, Any]:
@@ -138,8 +196,9 @@ TOKENS: Dict[str, Any] = load_tokens()
 
 
 # ==========================================
-# ROUTES D'AUTHENTIFICATION TIKTOK
+# TIKTOK AUTH
 # ==========================================
+
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
 TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI")
@@ -164,11 +223,11 @@ def tiktok_auth_start():
 
     html_content = f"""
     <html>
-        <body style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif; background-color:#f9fafb; margin:0;">
-            <div style="text-align:center; padding:40px; background:white; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#f9fafb;margin:0;">
+            <div style="text-align:center;padding:40px;background:white;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
                 <h2 style="color:#333;">Connexion à TikTok</h2>
                 <p style="color:#666;">Cliquez ci-dessous pour autoriser l'application.</p>
-                <a href="{url}" style="display:inline-block; padding:15px 30px; background-color:#fe2c55; color:#ffffff; text-decoration:none; font-size:18px; font-weight:bold; border-radius:8px; margin-top:20px;">
+                <a href="{url}" style="display:inline-block;padding:15px 30px;background:#fe2c55;color:#fff;text-decoration:none;font-size:18px;font-weight:bold;border-radius:8px;margin-top:20px;">
                     Se connecter à TikTok
                 </a>
             </div>
@@ -186,10 +245,8 @@ def tiktok_auth_callback(
 ):
     if error:
         return HTMLResponse(f"<h1>❌ TikTok Authorization Error</h1><p>{error}: {error_description}</p>")
-
     if not code:
         return HTMLResponse("<h1>TikTok OAuth Callback</h1><p>No authorization code received.</p>")
-
     if not TIKTOK_CLIENT_KEY or not TIKTOK_CLIENT_SECRET or not TIKTOK_REDIRECT_URI:
         return HTMLResponse("<h1>❌ Server Configuration Error</h1><p>Missing API Keys in Render.</p>")
 
@@ -205,43 +262,35 @@ def tiktok_auth_callback(
         token_res = requests.post(
             TIKTOK_TOKEN_URL,
             data=data,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Cache-Control": "no-cache"
-            },
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cache-Control": "no-cache"},
             timeout=30,
         )
-
         token_data = token_res.json()
 
         if "access_token" in token_data:
             TOKENS["tiktok"] = token_data
             save_tokens(TOKENS)
             return HTMLResponse("""
-            <html>
-              <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #f0fdf4;">
-                <h1 style="color: #166534;">✅ TikTok Connected Successfully !</h1>
+            <html><body style="font-family:Arial,sans-serif;padding:40px;background:#f0fdf4;">
+                <h1 style="color:#166534;">✅ TikTok Connected Successfully!</h1>
                 <p>Le token a été sauvegardé. Vous pouvez fermer cette page et cliquer sur Publish.</p>
-              </body>
-            </html>
+            </body></html>
             """)
         else:
             return HTMLResponse(f"""
-            <html>
-              <body style="font-family: Arial, sans-serif; padding: 40px; background-color: #fff7ed;">
-                <h1 style="color: #b91c1c;">❌ TikTok Token Exchange Failed</h1>
+            <html><body style="font-family:Arial,sans-serif;padding:40px;background:#fff7ed;">
+                <h1 style="color:#b91c1c;">❌ TikTok Token Exchange Failed</h1>
                 <pre>{json.dumps(token_data, indent=2)}</pre>
-              </body>
-            </html>
+            </body></html>
             """)
-
     except Exception as e:
         return HTMLResponse(f"<h1>❌ Internal Server Error</h1><p>{str(e)}</p>")
 
 
 # ==========================================
-# ROUTES D'AUTHENTIFICATION META (FACEBOOK/IG)
+# META AUTH
 # ==========================================
+
 META_APP_ID = os.getenv("META_APP_ID") or os.getenv("FACEBOOK_APP_ID")
 META_APP_SECRET = os.getenv("META_APP_SECRET") or os.getenv("FACEBOOK_APP_SECRET")
 META_REDIRECT_URI = os.getenv("META_REDIRECT_URI") or os.getenv("FACEBOOK_REDIRECT_URI")
@@ -274,7 +323,6 @@ def meta_auth_start():
 def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     if not code:
         return JSONResponse({"error": "Invalid OAuth response, missing code"}, status_code=400)
-
     if not META_APP_ID or not META_APP_SECRET or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID / META_APP_SECRET / META_REDIRECT_URI.")
 
@@ -291,7 +339,7 @@ def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     if "access_token" in data:
         TOKENS["meta"] = data
         save_tokens(TOKENS)
-        return HTMLResponse("<h1>✅ Compte Meta connecté avec succès !</h1><p>Vous pouvez fermer cette fenêtre.</p>")
+        return HTMLResponse("<h1>✅ Compte Meta connecté avec succès!</h1><p>Vous pouvez fermer cette fenêtre.</p>")
     else:
         return JSONResponse({"error": "Failed to get token", "details": data}, status_code=400)
 
@@ -302,36 +350,28 @@ def meta_status():
 @app.get("/auth/meta/find-my-ids")
 def find_my_ids():
     meta_data = TOKENS.get("meta")
-
     if not meta_data or "access_token" not in meta_data:
         return JSONResponse({
-            "error": "Token introuvable ou invalide !",
+            "error": "Token introuvable ou invalide!",
             "action": "Allez d'abord sur /auth/meta/start pour vous reconnecter.",
             "debug": meta_data
         }, status_code=400)
 
     user_token = meta_data["access_token"]
-
     url = "https://graph.facebook.com/v19.0/me/accounts"
-    params = {
-        "access_token": user_token,
-        "fields": "name,id,access_token,instagram_business_account"
-    }
+    params = {"access_token": user_token, "fields": "name,id,access_token,instagram_business_account"}
 
     try:
         r = requests.get(url, params=params)
-        data = r.json()
-        return {
-            "MESSAGE": "✅ Copiez ces valeurs dans Render > Environment",
-            "DATA": data
-        }
+        return {"MESSAGE": "✅ Copiez ces valeurs dans Render > Environment", "DATA": r.json()}
     except Exception as e:
         return {"error": str(e)}
 
 
 # ==========================================
-# API DE GÉNÉRATION ET PUBLICATION
+# GENERATE & PUBLISH
 # ==========================================
+
 class GenRequest(BaseModel):
     pet_dir: str
     logo_path: Optional[str] = "assets/branding/logo.png"
@@ -369,12 +409,9 @@ def generate(req: GenRequest):
         tone=req.tone,
         auto_post=False,
     )
-
     out_path = Path(req.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
     result = generate_video(cfg, out_path)
-
     return {
         "success": result.success,
         "message": result.message,
