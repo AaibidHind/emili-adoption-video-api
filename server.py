@@ -138,26 +138,37 @@ async def _proxy_to_streamlit(request: Request) -> Response:
     if query:
         target_url += f"?{query}"
 
+    # 1. On supprime 'accept-encoding' pour forcer Streamlit à renvoyer du texte brut
+    req_headers = {
+        k: v for k, v in request.headers.items() 
+        if k.lower() not in ("host", "accept-encoding")
+    }
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             proxy_req = client.build_request(
                 method=request.method,
                 url=target_url,
-                headers={k: v for k, v in request.headers.items() if k.lower() != "host"},
+                headers=req_headers,
                 content=await request.body(),
             )
             proxy_resp = await client.send(proxy_req)
+            
+            # 2. On nettoie les en-têtes de réponse pour éviter l'erreur d'encodage Firefox
+            resp_headers = dict(proxy_resp.headers)
+            resp_headers.pop("content-encoding", None)
+            resp_headers.pop("content-length", None)
+            
             return Response(
                 content=proxy_resp.content,
                 status_code=proxy_resp.status_code,
-                headers=dict(proxy_resp.headers),
+                headers=resp_headers,
             )
     except Exception:
         return HTMLResponse(
-            "<h2>Emili App</h2><p>Starting up... please refresh in a few seconds.</p>",
+            "<h2>Emili App</h2><p>Démarrage en cours... veuillez rafraîchir la page dans quelques secondes.</p>",
             status_code=503,
         )
-
 
 @app.api_route(
     "/{path:path}",
