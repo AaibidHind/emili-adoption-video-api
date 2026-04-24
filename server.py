@@ -32,6 +32,17 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/app", response_class=HTMLResponse)
+def streamlit_app():
+    """Redirect /app to the Streamlit UI on port 8501"""
+    return HTMLResponse("""
+    <html>
+      <head><meta http-equiv="refresh" content="0; url=http://localhost:8501" /></head>
+      <body><p>Loading Emili app... <a href="http://localhost:8501">Click here if not redirected.</a></p></body>
+    </html>
+    """)
+
+
 # --- Chemin de sauvegarde Render ---
 if os.path.exists("/opt/render/project/src"):
     OUT_DIR = Path("/opt/render/project/src/out")
