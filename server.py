@@ -33,7 +33,6 @@ FASTAPI_PREFIXES = (
     "/privacy",
     "/delete-data",
     "/legal",
-    "/static",
     "/assets",
     "/out",
     "/health",
@@ -124,7 +123,7 @@ if ASSETS_DIR.exists():
 
 STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
+# app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
 LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
