@@ -461,3 +461,49 @@ def publish(req: PubRequest):
         results.append(res)
 
     return {"results": results}
+
+
+# ==========================================
+# REVERSE PROXY → WEBSOCKETS STREAMLIT
+# ==========================================
+
+@app.websocket("/{path:path}")
+async def websocket_proxy(websocket: WebSocket, path: str):
+    """Proxy indispensable pour le moteur temps réel de Streamlit"""
+    await websocket.accept()
+    query = websocket.url.query
+    target_ws_url = f"ws://127.0.0.1:8501/{path}"
+    if query:
+        target_ws_url += f"?{query}"
+
+    try:
+        async with websockets.connect(target_ws_url) as ws:
+            async def client_to_server():
+                try:
+                    while True:
+                        data = await websocket.receive()
+                        if data.get("text") is not None:
+                            await ws.send(data["text"])
+                        elif data.get("bytes") is not None:
+                            await ws.send(data["bytes"])
+                except Exception:
+                    pass
+
+            async def server_to_client():
+                try:
+                    while True:
+                        data = await ws.recv()
+                        if isinstance(data, str):
+                            await websocket.send_text(data)
+                        else:
+                            await websocket.send_bytes(data)
+                except Exception:
+                    pass
+
+            await asyncio.gather(client_to_server(), server_to_client())
+    except Exception as e:
+        print(f"Erreur WebSocket Proxy: {e}")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
