@@ -1,23 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Privacy Policy</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Policy — Emili</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.8; margin: 0; padding: 40px; max-width: 860px; margin: auto; color: #333; }
+    h1 { font-size: 2em; margin-bottom: 4px; color: #111; }
+    h2 { font-size: 1.2em; margin-top: 32px; color: #222; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    p, li { font-size: 0.97em; }
+    ul { padding-left: 20px; }
+    .meta { color: #777; font-size: 0.88em; margin-bottom: 32px; }
+    a { color: #fe2c55; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 10px 14px; font-size: 0.93em; text-align: left; }
+    th { background: #f5f5f5; }
+  </style>
 </head>
 <body>
+
   <h1>Privacy Policy</h1>
+  <p class="meta">Emili Tracking Solutions Inc. &mdash; Last updated: April 24, 2025</p>
+
   <p>
-    This application collects TikTok OAuth credentials
-    (access token, refresh token, open_id) only after explicit user consent.
+    This Privacy Policy describes how <strong>Emili Tracking Solutions Inc.</strong> ("we", "us", or "our")
+    collects, uses, and protects information when you use the Emili application ("the App").
+    By using the App, you agree to the practices described in this policy.
   </p>
+
+  <h2>1. Who We Are</h2>
   <p>
-    The data is used solely to publish adoption videos
-    to the authorized shelter’s TikTok account.
+    Emili is a video generation and social media publishing service for animal shelters and rescue organizations.
+    We are not affiliated with TikTok, Meta, Google, or any other social media platform.
+    Our contact email is <a href="mailto:hind@emili.net">hind@emili.net</a>.
   </p>
+
+  <h2>2. Information We Collect</h2>
+  <table>
+    <tr><th>Type of Data</th><th>Purpose</th><th>Source</th></tr>
+    <tr><td>TikTok OAuth access token &amp; refresh token</td><td>To publish videos on your behalf</td><td>TikTok Login API (with your consent)</td></tr>
+    <tr><td>TikTok open_id</td><td>To identify the connected TikTok account</td><td>TikTok Login API</td></tr>
+    <tr><td>Facebook / Instagram Page access token</td><td>To publish to your Facebook Page or Instagram</td><td>Meta Login API (with your consent)</td></tr>
+    <tr><td>YouTube OAuth credentials</td><td>To upload videos to your YouTube channel</td><td>Google OAuth (with your consent)</td></tr>
+    <tr><td>Uploaded pet photos &amp; media</td><td>To generate adoption videos</td><td>Uploaded directly by the user</td></tr>
+  </table>
+  <p>We do <strong>not</strong> collect your name, email address, phone number, or payment information.</p>
+
+  <h2>3. How We Use Your Information</h2>
+  <ul>
+    <li>To generate and publish adoption videos to your connected accounts, only when you explicitly request it.</li>
+    <li>To maintain an active OAuth session so you do not need to re-authorize on every use.</li>
+    <li>We do <strong>not</strong> use your data for advertising, profiling, or analytics.</li>
+    <li>We do <strong>not</strong> sell, rent, or share your data with any third party.</li>
+  </ul>
+
+  <h2>4. TikTok Data</h2>
   <p>
-    No personal data is sold or shared with third parties.
+    When you connect your TikTok account through the App, we receive an access token and a refresh token
+    via TikTok's official OAuth 2.0 flow. These tokens are:
   </p>
+  <ul>
+    <li>Stored locally on the server running the App (in a <code>tokens.json</code> file or environment variables).</li>
+    <li>Used exclusively to call TikTok's Content Posting API on your behalf.</li>
+    <li>Never shared with or sold to any third party.</li>
+    <li>Revocable at any time from your TikTok Account &rarr; Security Settings &rarr; Connected Apps.</li>
+  </ul>
+
+  <h2>5. Data Retention</h2>
   <p>
-    Tokens are stored securely and can be revoked at any time.
+    OAuth tokens are retained only as long as necessary to provide the service. You may request deletion
+    of all stored data at any time by contacting us at <a href="mailto:hind@emili.net">hind@emili.net</a>
+    or visiting our <a href="/delete-data">Data Deletion page</a>.
   </p>
+
+  <h2>6. Data Security</h2>
+  <p>
+    We take reasonable technical measures to protect stored tokens and credentials.
+    All communications between the App and social platform APIs are encrypted via HTTPS.
+    However, no system is 100% secure, and we cannot guarantee absolute security.
+  </p>
+
+  <h2>7. Third-Party Services</h2>
+  <p>
+    The App integrates with the following third-party platforms via their official APIs:
+  </p>
+  <ul>
+    <li><strong>TikTok</strong> — <a href="https://www.tiktok.com/legal/page/global/privacy-policy/en" target="_blank">TikTok Privacy Policy</a></li>
+    <li><strong>Meta (Facebook / Instagram)</strong> — <a href="https://www.facebook.com/privacy/policy/" target="_blank">Meta Privacy Policy</a></li>
+    <li><strong>Google (YouTube)</strong> — <a href="https://policies.google.com/privacy" target="_blank">Google Privacy Policy</a></li>
+  </ul>
+  <p>We are not responsible for the privacy practices of these third-party platforms.</p>
+
+  <h2>8. Children's Privacy</h2>
+  <p>
+    The App is not directed at children under the age of 13. We do not knowingly collect any information
+    from children under 13. If you believe a child has provided us with personal data, please contact us
+    immediately so we can delete it.
+  </p>
+
+  <h2>9. Your Rights</h2>
+  <p>You have the right to:</p>
+  <ul>
+    <li>Access the data we hold about you.</li>
+    <li>Request correction of inaccurate data.</li>
+    <li>Request deletion of your data at any time.</li>
+    <li>Revoke OAuth access to any connected platform at any time.</li>
+  </ul>
+  <p>
+    To exercise any of these rights, email us at <a href="mailto:hind@emili.net">hind@emili.net</a>.
+  </p>
+
+  <h2>10. Changes to This Policy</h2>
+  <p>
+    We may update this Privacy Policy from time to time. The "Last updated" date at the top of this page
+    will reflect any changes. Continued use of the App after an update constitutes acceptance of the revised policy.
+  </p>
+
+  <h2>11. Contact Us</h2>
+  <p>
+    For any privacy-related questions or data requests, contact us at:<br>
+    <strong>Email:</strong> <a href="mailto:hind@emili.net">hind@emili.net</a><br>
+    <strong>Company:</strong> Emili Tracking Solutions Inc.
+  </p>
+
 </body>
 </html>
