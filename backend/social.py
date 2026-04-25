@@ -15,8 +15,6 @@ from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
-import shutil
-
 # =========================
 # Models / logging
 # =========================
@@ -45,7 +43,7 @@ def _log_result(res: SocialPostResult) -> None:
 
 
 # =========================
-# Public URL helper (ADAPTÉ POUR STREAMLIT)
+# Public URL helper (CORRIGÉ POUR FASTAPI)
 # =========================
 
 def _public_url_for_file(video_path: Path) -> Optional[str]:
@@ -53,17 +51,11 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     if not base:
         return None
     
-    # 1. On crée le dossier "static" que Streamlit autorise à partager
-    static_dir = Path("static")
-    static_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 2. On copie la vidéo de "out" vers "static"
-    dest_path = static_dir / video_path.name
-    shutil.copy(video_path, dest_path)
-    
-    # 3. L'URL magique officielle de Streamlit pour les fichiers statiques
+    # On pointe directement vers le dossier /out/ géré par FastAPI
+    # Plus besoin de copier les fichiers !
     safe_name = urllib.parse.quote(video_path.name)
-    return f"{base.rstrip('/')}/app/static/{safe_name}"
+    return f"{base.rstrip('/')}/out/{safe_name}"
+
 
 # =========================
 # YouTube
@@ -319,7 +311,7 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
         _log_result(res)
         return res
 
-    # 2. Lien public Streamlit
+    # 2. Lien public généré (CORRIGÉ)
     video_url = _public_url_for_file(video_path)
     if not video_url:
         res = SocialPostResult("tiktok", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
