@@ -57,6 +57,24 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     return f"{base.rstrip('/')}/out/{safe_name}"
 
 
+def _check_public_video_url(video_url: str) -> Optional[str]:
+    try:
+        r = requests.get(video_url, stream=True, timeout=30)
+
+        if r.status_code != 200:
+            return f"Video URL inaccessible: HTTP {r.status_code} - {video_url}"
+
+        content_type = r.headers.get("content-type", "")
+
+        if "video" not in content_type and "octet-stream" not in content_type:
+            return f"Invalid video content-type: {content_type}"
+
+        return None
+
+    except Exception as e:
+        return f"Video URL check failed: {repr(e)}"
+        
+
 # =========================
 # YouTube
 # =========================
@@ -201,6 +219,20 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
 
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
+        _log_result(res)
+        return res
+
+    url_error = _check_public_video_url(video_url)
+    if url_error:
+        res = SocialPostResult(
+            "instagram",
+            False,
+            url_error,
+            str(video_path),
+            title,
+            description,
+            {"video_url": video_url},
+        )
         _log_result(res)
         return res
 
