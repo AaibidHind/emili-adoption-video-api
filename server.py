@@ -37,6 +37,13 @@ STREAMLIT_BASE = "http://127.0.0.1:8501"
 def health():
     return {"status": "ok"}
 
+@app.get("/debug/out")
+def debug_out():
+    return {
+        "out_dir": str(OUT_DIR),
+        "exists": OUT_DIR.exists(),
+        "files": [p.name for p in OUT_DIR.glob("*")]
+    }
 
 # ==========================================
 # LEGAL PAGES
@@ -430,6 +437,9 @@ async def _proxy_to_streamlit(request: Request) -> Response:
             status_code=503,
         )
 
+@app.get("/debug/out")
+def debug_out():
+    return {"files": [p.name for p in OUT_DIR.glob("*")]}
 
 @app.api_route(
     "/{path:path}",
@@ -483,8 +493,3 @@ async def websocket_proxy(websocket: WebSocket, path: str):
             await websocket.close()
         except Exception:
             pass
-
-
-@app.get("/debug/out")
-def debug_out():
-    return {"files": [p.name for p in OUT_DIR.glob("*")]}
