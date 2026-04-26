@@ -509,3 +509,11 @@ async def websocket_proxy(websocket: WebSocket, path: str):
             await websocket.close()
         except Exception:
             pass
+
+
+
+@app.get("/debug/out")
+def debug_out():
+    return {
+        "files": [p.name for p in OUT_DIR.glob("*")]
+    }
