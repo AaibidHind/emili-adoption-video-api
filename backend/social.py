@@ -1,3 +1,5 @@
+import subprocess
+
 from __future__ import annotations
 
 import json
@@ -207,9 +209,31 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
 # =========================
 # Instagram
 # =========================
+def _prepare_video_for_instagram(video_path: Path) -> Path:
+    output_path = video_path.with_name(video_path.stem + "_instagram.mp4")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
+        "-r", "30",
+        "-c:v", "libx264",
+        "-profile:v", "high",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-ar", "44100",
+        "-movflags", "+faststart",
+        str(output_path)
+    ]
+
+    subprocess.run(cmd, check=True)
+    return output_path
+
 def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     ig_user_id = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")
     access_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN") or os.getenv("INSTAGRAM_ACCESS_TOKEN")
+    video_path = _prepare_video_for_instagram(video_path)
     video_url = _public_url_for_file(video_path)
 
     if not ig_user_id or not access_token:
