@@ -159,7 +159,8 @@ def tiktok_auth_start():
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
         "response_type": "code",
-        "scope": "user.info.basic,video.publish",
+        
+        "scope": "user.info.basic,video.upload",
         "redirect_uri": TIKTOK_REDIRECT_URI,
         "state": "emili_secure_state_123"
     }
