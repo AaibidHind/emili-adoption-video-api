@@ -26,24 +26,7 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-# Streamlit runs internally on 8501, FastAPI is the public-facing server
 STREAMLIT_BASE = "http://127.0.0.1:8501"
-
-# These prefixes are handled by FastAPI — everything else proxies to Streamlit
-FASTAPI_PREFIXES = (
-    "/terms",
-    "/privacy",
-    "/delete-data",
-    "/legal",
-    "/assets",
-    "/out",
-    "/health",
-    "/docs",
-    "/openapi",
-    "/auth",
-    "/generate",
-    "/publish",
-)
 
 
 # ==========================================
@@ -54,13 +37,6 @@ FASTAPI_PREFIXES = (
 def health():
     return {"status": "ok"}
 
-@app.get("/debug/out")
-def debug_out():
-    return {
-        "out_dir": str(OUT_DIR),
-        "exists": OUT_DIR.exists(),
-        "files": [p.name for p in OUT_DIR.glob("*")]
-    }
 
 # ==========================================
 # LEGAL PAGES
@@ -120,7 +96,6 @@ def serve_txt(filename: str):
 
 OUT_DIR = Path("out").resolve()
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-
 app.mount("/out", StaticFiles(directory=str(OUT_DIR)), name="out")
 
 ASSETS_DIR = Path("assets")
@@ -129,67 +104,10 @@ if ASSETS_DIR.exists():
 
 STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
-# app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
 LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
     app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
-
-
-# ==========================================
-# REVERSE PROXY → STREAMLIT (catch-all)
-# ==========================================
-
-async def _proxy_to_streamlit(request: Request) -> Response:
-    path = request.url.path
-    query = request.url.query
-    target_url = f"{STREAMLIT_BASE}{path}"
-    if query:
-        target_url += f"?{query}"
-
-    # 1. On supprime 'accept-encoding' pour forcer Streamlit à renvoyer du texte brut
-    req_headers = {
-        k: v for k, v in request.headers.items() 
-        if k.lower() not in ("host", "accept-encoding")
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            proxy_req = client.build_request(
-                method=request.method,
-                url=target_url,
-                headers=req_headers,
-                content=await request.body(),
-            )
-            proxy_resp = await client.send(proxy_req)
-            
-            # 2. On nettoie les en-têtes de réponse pour éviter l'erreur d'encodage Firefox
-            resp_headers = dict(proxy_resp.headers)
-            resp_headers.pop("content-encoding", None)
-            resp_headers.pop("content-length", None)
-            
-            return Response(
-                content=proxy_resp.content,
-                status_code=proxy_resp.status_code,
-                headers=resp_headers,
-            )
-    except Exception:
-        return HTMLResponse(
-            "<h2>Emili App</h2><p>Démarrage en cours... veuillez rafraîchir la page dans quelques secondes.</p>",
-            status_code=503,
-        )
-
-@app.api_route(
-    "/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
-)
-async def proxy_streamlit(path: str, request: Request):
-    """Proxy everything not matched above to Streamlit."""
-    full_path = "/" + path
-    for prefix in FASTAPI_PREFIXES:
-        if full_path.startswith(prefix):
-            raise HTTPException(status_code=404, detail="Not found")
-    return await _proxy_to_streamlit(request)
 
 
 # ==========================================
@@ -430,10 +348,8 @@ def generate(req: GenRequest):
         auto_post=False,
     )
     out_path = Path(req.out)
-    
     if not out_path.is_absolute():
         out_path = OUT_DIR / out_path.name
-    
     out_path.parent.mkdir(parents=True, exist_ok=True)
     result = generate_video(cfg, out_path)
     return {
@@ -448,7 +364,6 @@ def generate(req: GenRequest):
 @app.post("/publish")
 def publish(req: PubRequest):
     video_path = Path(req.video_path)
-
     if not video_path.is_absolute():
         video_path = OUT_DIR / video_path.name
     if not video_path.exists():
@@ -477,12 +392,60 @@ def publish(req: PubRequest):
 
 
 # ==========================================
-# REVERSE PROXY → WEBSOCKETS STREAMLIT
+# REVERSE PROXY → STREAMLIT (catch-all)
+# ==========================================
+
+async def _proxy_to_streamlit(request: Request) -> Response:
+    path = request.url.path
+    query = request.url.query
+    target_url = f"{STREAMLIT_BASE}{path}"
+    if query:
+        target_url += f"?{query}"
+
+    req_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in ("host", "accept-encoding")
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            proxy_req = client.build_request(
+                method=request.method,
+                url=target_url,
+                headers=req_headers,
+                content=await request.body(),
+            )
+            proxy_resp = await client.send(proxy_req)
+            resp_headers = dict(proxy_resp.headers)
+            resp_headers.pop("content-encoding", None)
+            resp_headers.pop("content-length", None)
+            return Response(
+                content=proxy_resp.content,
+                status_code=proxy_resp.status_code,
+                headers=resp_headers,
+            )
+    except Exception:
+        return HTMLResponse(
+            "<h2>Emili App</h2><p>Démarrage en cours... veuillez rafraîchir la page dans quelques secondes.</p>",
+            status_code=503,
+        )
+
+
+@app.api_route(
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
+)
+async def proxy_streamlit(path: str, request: Request):
+    """Proxy everything not matched above to Streamlit."""
+    return await _proxy_to_streamlit(request)
+
+
+# ==========================================
+# WEBSOCKET PROXY → STREAMLIT
 # ==========================================
 
 @app.websocket("/{path:path}")
 async def websocket_proxy(websocket: WebSocket, path: str):
-    """Proxy indispensable pour le moteur temps réel de Streamlit"""
     await websocket.accept()
     query = websocket.url.query
     target_ws_url = f"ws://127.0.0.1:8501/{path}"
@@ -522,9 +485,6 @@ async def websocket_proxy(websocket: WebSocket, path: str):
             pass
 
 
-
 @app.get("/debug/out")
 def debug_out():
-    return {
-        "files": [p.name for p in OUT_DIR.glob("*")]
-    }
+    return {"files": [p.name for p in OUT_DIR.glob("*")]}
