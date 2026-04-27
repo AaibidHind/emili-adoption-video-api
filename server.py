@@ -26,7 +26,6 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-# Streamlit runs on its own Render service
 STREAMLIT_BASE = "https://emili-streamlit.onrender.com"
 
 
@@ -37,6 +36,34 @@ STREAMLIT_BASE = "https://emili-streamlit.onrender.com"
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ==========================================
+# VIDEO PROXY — clean direct download for Instagram
+# ==========================================
+
+@app.get("/video/{filename}")
+async def serve_video(filename: str):
+    video_url = f"https://emili-streamlit.onrender.com/app/static/{filename}"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(video_url)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail=f"Video not found: {filename}")
+            return Response(
+                content=resp.content,
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f"inline; filename={filename}",
+                    "Content-Type": "video/mp4",
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=3600",
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================
@@ -209,7 +236,6 @@ def tiktok_auth_callback(
         if "access_token" in token_data:
             TOKENS["tiktok"] = token_data
             save_tokens(TOKENS)
-            # Show token so user can copy it to Streamlit env vars
             access_token = token_data.get("access_token", "")
             return HTMLResponse(f"""
             <html><body style="font-family:Arial,sans-serif;padding:40px;background:#f0fdf4;">
@@ -218,7 +244,6 @@ def tiktok_auth_callback(
                 <hr/>
                 <p><strong>Copy this token and add it to your Render emili-streamlit environment variables as <code>TIKTOK_ACCESS_TOKEN</code>:</strong></p>
                 <textarea style="width:100%;height:80px;font-family:monospace;font-size:12px;">{access_token}</textarea>
-                <p>Render → emili-streamlit → Environment → Add: <code>TIKTOK_ACCESS_TOKEN</code> = (paste above)</p>
             </body></html>
             """)
         else:
@@ -231,10 +256,6 @@ def tiktok_auth_callback(
     except Exception as e:
         return HTMLResponse(f"<h1>❌ Internal Server Error</h1><p>{str(e)}</p>")
 
-
-# ==========================================
-# TIKTOK STATUS
-# ==========================================
 
 @app.get("/auth/tiktok/status")
 def tiktok_status():
@@ -417,7 +438,7 @@ def debug_out():
 
 
 # ==========================================
-# REVERSE PROXY → STREAMLIT (catch-all)
+# REVERSE PROXY → STREAMLIT
 # ==========================================
 
 async def _proxy_to_streamlit(request: Request) -> Response:
@@ -461,8 +482,6 @@ async def _proxy_to_streamlit(request: Request) -> Response:
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
 )
 async def proxy_streamlit(path: str, request: Request):
-    """Proxy everything not matched above to Streamlit.
-    FastAPI routes defined above always take priority automatically."""
     return await _proxy_to_streamlit(request)
 
 
