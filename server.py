@@ -28,6 +28,22 @@ app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
 STREAMLIT_BASE = "http://127.0.0.1:8501"
 
+# FastAPI routes that must NEVER be proxied to Streamlit
+FASTAPI_ROUTES = (
+    "/auth/",
+    "/generate",
+    "/publish",
+    "/health",
+    "/terms",
+    "/privacy",
+    "/delete-data",
+    "/docs",
+    "/openapi",
+    "/out/",
+    "/assets/",
+    "/legal/",
+    "/debug",
+)
 
 # ==========================================
 # HEALTH
@@ -37,13 +53,6 @@ STREAMLIT_BASE = "http://127.0.0.1:8501"
 def health():
     return {"status": "ok"}
 
-@app.get("/debug/out")
-def debug_out():
-    return {
-        "out_dir": str(OUT_DIR),
-        "exists": OUT_DIR.exists(),
-        "files": [p.name for p in OUT_DIR.glob("*")]
-    }
 
 # ==========================================
 # LEGAL PAGES
@@ -159,7 +168,6 @@ def tiktok_auth_start():
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
         "response_type": "code",
-        
         "scope": "user.info.basic,video.upload",
         "redirect_uri": TIKTOK_REDIRECT_URI,
         "state": "emili_secure_state_123"
@@ -399,6 +407,11 @@ def publish(req: PubRequest):
     return {"results": results}
 
 
+@app.get("/debug/out")
+def debug_out():
+    return {"files": [p.name for p in OUT_DIR.glob("*")]}
+
+
 # ==========================================
 # REVERSE PROXY → STREAMLIT (catch-all)
 # ==========================================
@@ -438,16 +451,19 @@ async def _proxy_to_streamlit(request: Request) -> Response:
             status_code=503,
         )
 
-@app.get("/debug/out")
-def debug_out():
-    return {"files": [p.name for p in OUT_DIR.glob("*")]}
 
 @app.api_route(
     "/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
 )
 async def proxy_streamlit(path: str, request: Request):
-    """Proxy everything not matched above to Streamlit."""
+    """Proxy everything not matched above to Streamlit.
+    FastAPI routes defined above always take priority over this catch-all."""
+    full_path = "/" + path
+    # Block known FastAPI routes from being proxied (safety net)
+    for route in FASTAPI_ROUTES:
+        if full_path.startswith(route):
+            raise HTTPException(status_code=404, detail="Not found")
     return await _proxy_to_streamlit(request)
 
 
