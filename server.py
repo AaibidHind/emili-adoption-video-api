@@ -26,7 +26,8 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-STREAMLIT_BASE = "http://127.0.0.1:8501"
+# ✅ Streamlit now runs on its own Render service
+STREAMLIT_BASE = "https://emili-streamlit.onrender.com"
 
 # FastAPI routes that must NEVER be proxied to Streamlit
 FASTAPI_ROUTES = (
@@ -413,7 +414,7 @@ def debug_out():
 
 
 # ==========================================
-# REVERSE PROXY → STREAMLIT (catch-all)
+# REVERSE PROXY → STREAMLIT
 # ==========================================
 
 async def _proxy_to_streamlit(request: Request) -> Response:
@@ -447,7 +448,7 @@ async def _proxy_to_streamlit(request: Request) -> Response:
             )
     except Exception:
         return HTMLResponse(
-            "<h2>Emili App</h2><p>Démarrage en cours... veuillez rafraîchir la page dans quelques secondes.</p>",
+            "<h2>Emili App</h2><p>Démarrage en cours... veuillez rafraîchir dans quelques secondes.</p>",
             status_code=503,
         )
 
@@ -457,10 +458,7 @@ async def _proxy_to_streamlit(request: Request) -> Response:
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
 )
 async def proxy_streamlit(path: str, request: Request):
-    """Proxy everything not matched above to Streamlit.
-    FastAPI routes defined above always take priority over this catch-all."""
     full_path = "/" + path
-    # Block known FastAPI routes from being proxied (safety net)
     for route in FASTAPI_ROUTES:
         if full_path.startswith(route):
             raise HTTPException(status_code=404, detail="Not found")
@@ -475,7 +473,8 @@ async def proxy_streamlit(path: str, request: Request):
 async def websocket_proxy(websocket: WebSocket, path: str):
     await websocket.accept()
     query = websocket.url.query
-    target_ws_url = f"ws://127.0.0.1:8501/{path}"
+    # Point WebSocket to the external Streamlit service
+    target_ws_url = f"wss://emili-streamlit.onrender.com/{path}"
     if query:
         target_ws_url += f"?{query}"
 
