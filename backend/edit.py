@@ -86,7 +86,8 @@ def _scale_for_aspect(aspect: str) -> Tuple[int, int]:
     """
     a = (aspect or "").lower()
     if a in {"vertical", "portrait"}:
-        return (360, 640)       
+       
+        return (540, 960)
     if a == "square":
         return (480, 480)       
     return (640, 360)           
