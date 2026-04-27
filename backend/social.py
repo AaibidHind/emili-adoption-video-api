@@ -55,8 +55,34 @@ def _copy_to_static(video_path: Path) -> None:
         static_dir = Path("static")
         static_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy(video_path, static_dir / video_path.name)
+        print(f"[social.py] Copied {video_path.name} to static/")
     except Exception as e:
         print(f"[social.py] Failed to copy to static: {e}")
+
+
+def _prepare_for_instagram(video_path: Path) -> Path:
+    out_path = video_path.parent / f"ig_{video_path.name}"
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-c:v", "libx264",
+            "-c:a", "aac",
+            "-ar", "48000",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-preset", "fast",
+            str(out_path)
+        ]
+        result = subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+        print(f"[social.py] ffmpeg re-encode success: {out_path.name}")
+        return out_path
+    except subprocess.CalledProcessError as e:
+        print(f"[social.py] ffmpeg re-encode failed: {e.stderr.decode()}")
+        return video_path
+    except Exception as e:
+        print(f"[social.py] ffmpeg re-encode error: {e}")
+        return video_path
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
@@ -146,15 +172,20 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # Copy to static for Streamlit serving
-    _copy_to_static(video_path)
+    # Re-encode with ffmpeg for Instagram compatibility (48kHz, faststart, yuv420p)
+    ready_path = _prepare_for_instagram(video_path)
+
+    # Copy to static for public serving
+    _copy_to_static(ready_path)
 
     # Use FastAPI proxy URL for clean direct download
-    video_url = _public_url_for_file(video_path)
+    video_url = _public_url_for_file(ready_path)
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
         return res
+
+    print(f"[social.py] Instagram video URL: {video_url}")
 
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
     media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")
@@ -221,7 +252,7 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    res = SocialPostResult("instagram", True, "Instagram published successfully.", str(video_path), title, description, {"instagram_post_id": publish_json.get("id")})
+    res = SocialPostResult("instagram", True, "Instagram published successfully!", str(video_path), title, description, {"instagram_post_id": publish_json.get("id")})
     _log_result(res)
     return res
 
