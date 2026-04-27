@@ -45,7 +45,7 @@ def _log_result(res: SocialPostResult) -> None:
 
 
 # =========================
-# Public URL helper (ADAPTÉ POUR STREAMLIT)
+# Public URL helper
 # =========================
 
 def _public_url_for_file(video_path: Path) -> Optional[str]:
@@ -53,15 +53,12 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     if not base:
         return None
     
-    # 1. On crée le dossier "static" que Streamlit autorise à partager
     static_dir = Path("static")
     static_dir.mkdir(parents=True, exist_ok=True)
     
-    # 2. On copie la vidéo de "out" vers "static"
     dest_path = static_dir / video_path.name
     shutil.copy(video_path, dest_path)
     
-    # 3. L'URL magique officielle de Streamlit pour les fichiers statiques
     safe_name = urllib.parse.quote(video_path.name)
     return f"{base.rstrip('/')}/app/static/{safe_name}"
 
@@ -112,7 +109,7 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
 
     body = {
         "snippet": {"title": title, "description": description, "categoryId": "22"},
-        "status": {"privacyStatus": "unlisted"},  # or "public"
+        "status": {"privacyStatus": "unlisted"},
     }
 
     try:
@@ -160,20 +157,14 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
 
     try:
         with open(video_path, "rb") as video_file:
-            files = {
-                "source": video_file
-            }
+            files = {"source": video_file}
             r = requests.post(url, data=data, files=files, timeout=600)
             
         r.raise_for_status()
         j = r.json()
         res = SocialPostResult(
-            "facebook",
-            True,
-            "Facebook direct upload completed.",
-            str(video_path),
-            title,
-            description,
+            "facebook", True, "Facebook direct upload completed.",
+            str(video_path), title, description,
             {"video_id": j.get("id"), "graph_response": j},
         )
         _log_result(res)
@@ -183,12 +174,8 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
         if getattr(e, "response", None) is not None:
             err_text = e.response.text
         res = SocialPostResult(
-            "facebook",
-            False,
-            f"Facebook upload failed: {err_text or repr(e)}",
-            str(video_path),
-            title,
-            description,
+            "facebook", False, f"Facebook upload failed: {err_text or repr(e)}",
+            str(video_path), title, description,
             {"hint": "Check token permissions + page role"},
         )
         _log_result(res)
@@ -216,7 +203,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
     media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")
 
-    # 1) Create container
     create_url = f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media"
     create_data = {
         "media_type": media_type,
@@ -239,13 +225,11 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # 2) Poll processing status
     status_url = f"https://graph.facebook.com/{graph_version}/{creation_id}"
     status_params = {"access_token": access_token, "fields": "status_code,status"}
     
     max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "60"))
     sleep_sec = int(os.getenv("INSTAGRAM_POLL_SECONDS", "5"))
-
     last_error_log = None
 
     for attempt in range(max_retries):
@@ -253,7 +237,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             s = requests.get(status_url, params=status_params, timeout=30)
             if s.status_code != 200:
                 last_error_log = f"HTTP {s.status_code}: {s.text}"
-            
             s.raise_for_status()
             data = s.json()
             code = data.get("status_code")
@@ -281,7 +264,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # 3) Publish
     publish_url = f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media_publish"
     publish_data = {"creation_id": creation_id, "access_token": access_token}
 
@@ -302,31 +284,48 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
 # =========================
 # TikTok
 # =========================
-def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
-    # 1. Récupération du token
+def _get_tiktok_access_token() -> Optional[str]:
+    """
+    Read TikTok access token from:
+    1. Environment variable TIKTOK_ACCESS_TOKEN (set in Render after connecting)
+    2. tokens.json file (fallback for local dev)
+    """
+    # ✅ First try environment variable (works across services)
+    token = os.getenv("TIKTOK_ACCESS_TOKEN")
+    if token:
+        return token
+
+    # ✅ Fallback: read from tokens.json (local dev)
     token_file = Path("tokens.json")
-    access_token = None
     if token_file.exists():
         try:
             tokens = json.loads(token_file.read_text(encoding="utf-8"))
             tk_data = tokens.get("tiktok", {})
-            access_token = tk_data.get("access_token") or tk_data.get("data", {}).get("access_token")
+            return tk_data.get("access_token") or tk_data.get("data", {}).get("access_token")
         except Exception:
             pass
-            
+
+    return None
+
+
+def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
+    access_token = _get_tiktok_access_token()
+
     if not access_token:
-        res = SocialPostResult("tiktok", False, "Missing TikTok access token. Allez sur /auth/tiktok/start d'abord.", str(video_path), title, description)
+        res = SocialPostResult(
+            "tiktok", False,
+            "Missing TikTok access token. Go to /auth/tiktok/start first, then add TIKTOK_ACCESS_TOKEN to Render env vars.",
+            str(video_path), title, description
+        )
         _log_result(res)
         return res
 
-    # 2. Lien public Streamlit
     video_url = _public_url_for_file(video_path)
     if not video_url:
         res = SocialPostResult("tiktok", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
         return res
 
-    # 3. Requête API
     url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -334,7 +333,7 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
     }
     
     full_title = f"{title}\n\n{description}"
-    full_title = full_title[:2000] # Limite de sécurité
+    full_title = full_title[:2000]
 
     privacy_level = os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")
 
@@ -366,12 +365,8 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
         publish_id = data.get("data", {}).get("publish_id")
         
         res = SocialPostResult(
-            "tiktok", 
-            True, 
-            "TikTok publish initialized successfully.", 
-            str(video_path), 
-            title, 
-            description, 
+            "tiktok", True, "TikTok publish initialized successfully.",
+            str(video_path), title, description,
             {"publish_id": publish_id, "video_url": video_url, "privacy": privacy_level}
         )
         _log_result(res)
