@@ -4,7 +4,6 @@ import json
 import os
 import time
 import subprocess
-import tempfile
 import urllib.parse
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -48,27 +47,7 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     if not base:
         return None
     safe_name = urllib.parse.quote(video_path.name)
-    return f"{base.rstrip('/')}/app/static/{safe_name}"
-
-
-def _upscale_for_instagram(video_path: Path) -> Path:
-    upscaled_path = video_path.parent / f"ig_{video_path.name}"
-    try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-vf", "scale=540:960:force_original_aspect_ratio=decrease,pad=540:960:(ow-iw)/2:(oh-ih)/2",
-            "-c:v", "libx264",
-            "-c:a", "aac",
-            "-preset", "fast",
-            "-crf", "23",
-            str(upscaled_path)
-        ]
-        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
-        return upscaled_path
-    except Exception as e:
-        print(f"[social.py] ffmpeg upscale failed: {e}, using original")
-        return video_path
+    return f"{base.rstrip('/')}/video/{safe_name}"
 
 
 def _copy_to_static(video_path: Path) -> None:
@@ -167,13 +146,11 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # Upscale to 540x960 for Instagram requirements
-    upscaled_path = _upscale_for_instagram(video_path)
+    # Copy to static for Streamlit serving
+    _copy_to_static(video_path)
 
-    # Copy upscaled video to static folder for public URL
-    _copy_to_static(upscaled_path)
-
-    video_url = _public_url_for_file(upscaled_path)
+    # Use FastAPI proxy URL for clean direct download
+    video_url = _public_url_for_file(video_path)
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
@@ -218,7 +195,7 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             if code == "ERROR":
                 raw_status = data.get("status", "Raison inconnue")
                 error_msg = raw_status.get("error_message", str(raw_status)) if isinstance(raw_status, dict) else str(raw_status)
-                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg}", str(video_path), title, description)
+                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg}", str(video_path), title, description, {"video_url": video_url})
                 _log_result(res)
                 return res
             time.sleep(sleep_sec)
