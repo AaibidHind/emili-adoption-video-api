@@ -200,7 +200,7 @@ def assemble_video(
                 audio_fps=48000,  # Instagram requires 48kHz
                  ffmpeg_params=["-movflags", "+faststart"],  # moov atom at front
 )
-        )
+        
         
 
     finally:
