@@ -45,12 +45,8 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     base = os.getenv("SOCIAL_PUBLIC_BASE_URL")
     if not base:
         return None
-    static_dir = Path("static")
-    static_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = static_dir / video_path.name
-    shutil.copy(video_path, dest_path)
     safe_name = urllib.parse.quote(video_path.name)
-    return f"{base.rstrip('/')}/app/static/{safe_name}"
+    return f"{base.rstrip('/')}/out/{safe_name}"
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
@@ -235,17 +231,13 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json; charset=UTF-8"}
 
     video_size = video_path.stat().st_size
-
-    # TikTok chunk rules:
-    # - If file <= 5MB: one chunk, chunk_size = file size
-    # - If file > 5MB: use 5MB chunks (last chunk can be smaller)
     FIVE_MB = 5 * 1024 * 1024
     if video_size <= FIVE_MB:
         chunk_size = video_size
         total_chunk_count = 1
     else:
         chunk_size = FIVE_MB
-        total_chunk_count = -(-video_size // FIVE_MB)  # ceiling division
+        total_chunk_count = -(-video_size // FIVE_MB)
 
     init_payload = {
         "post_info": {
