@@ -191,12 +191,17 @@ def assemble_video(
         
         print(f"[edit.py] Writing output: {out_path}")
         final_clip.write_videofile(
-            str(out_path),
-            codec="libx264",
-            audio_codec="aac",
-            fps=30,
-            preset="medium",
+          
+                 str(out_path),
+                 codec="libx264",
+                 audio_codec="aac",
+                 fps=30,
+                preset="medium",
+                audio_fps=48000,  # Instagram requires 48kHz
+                 ffmpeg_params=["-movflags", "+faststart"],  # moov atom at front
+)
         )
+        
 
     finally:
         for c in clips:
