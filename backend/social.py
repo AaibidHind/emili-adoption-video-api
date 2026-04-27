@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import subprocess
+import tempfile
 import urllib.parse
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -47,6 +49,35 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
         return None
     safe_name = urllib.parse.quote(video_path.name)
     return f"{base.rstrip('/')}/app/static/{safe_name}"
+
+
+def _upscale_for_instagram(video_path: Path) -> Path:
+    upscaled_path = video_path.parent / f"ig_{video_path.name}"
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-vf", "scale=540:960:force_original_aspect_ratio=decrease,pad=540:960:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264",
+            "-c:a", "aac",
+            "-preset", "fast",
+            "-crf", "23",
+            str(upscaled_path)
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+        return upscaled_path
+    except Exception as e:
+        print(f"[social.py] ffmpeg upscale failed: {e}, using original")
+        return video_path
+
+
+def _copy_to_static(video_path: Path) -> None:
+    try:
+        static_dir = Path("static")
+        static_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(video_path, static_dir / video_path.name)
+    except Exception as e:
+        print(f"[social.py] Failed to copy to static: {e}")
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
@@ -130,18 +161,28 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
 def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     ig_user_id = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")
     access_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN") or os.getenv("INSTAGRAM_ACCESS_TOKEN")
-    video_url = _public_url_for_file(video_path)
+
     if not ig_user_id or not access_token:
         res = SocialPostResult("instagram", False, "Missing INSTAGRAM_BUSINESS_ACCOUNT_ID or access token", str(video_path), title, description)
         _log_result(res)
         return res
+
+    # Upscale to 540x960 for Instagram requirements
+    upscaled_path = _upscale_for_instagram(video_path)
+
+    # Copy upscaled video to static folder for public URL
+    _copy_to_static(upscaled_path)
+
+    video_url = _public_url_for_file(upscaled_path)
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
         return res
+
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
     media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")
     caption = f"{title}\n\n{description}".strip()
+
     try:
         create_resp = requests.post(
             f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media",
@@ -157,9 +198,11 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         res = SocialPostResult("instagram", False, f"Instagram create container failed: {err_txt}", str(video_path), title, description)
         _log_result(res)
         return res
+
     max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "60"))
     sleep_sec = int(os.getenv("INSTAGRAM_POLL_SECONDS", "5"))
     last_error_log = None
+
     for _ in range(max_retries):
         try:
             s = requests.get(
@@ -186,6 +229,7 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         res = SocialPostResult("instagram", False, f"Instagram processing timed out. Last error: {last_error_log}", str(video_path), title, description)
         _log_result(res)
         return res
+
     try:
         publish_resp = requests.post(
             f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media_publish",
@@ -199,6 +243,7 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         res = SocialPostResult("instagram", False, f"Instagram publish failed: {err_text}", str(video_path), title, description)
         _log_result(res)
         return res
+
     res = SocialPostResult("instagram", True, "Instagram published successfully.", str(video_path), title, description, {"instagram_post_id": publish_json.get("id")})
     _log_result(res)
     return res
