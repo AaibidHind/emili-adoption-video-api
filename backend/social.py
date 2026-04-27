@@ -326,7 +326,8 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
         _log_result(res)
         return res
 
-    url = "https://open.tiktokapis.com/v2/post/publish/video/init/"
+   
+    url = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
