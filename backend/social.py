@@ -57,10 +57,8 @@ def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
     client_id = os.getenv("YOUTUBE_CLIENT_ID")
     client_secret = os.getenv("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.getenv("YOUTUBE_REFRESH_TOKEN")
-
     if not client_id or not client_secret or not refresh_token:
-        return None, "Missing YouTube OAuth credentials. Set YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET and YOUTUBE_REFRESH_TOKEN."
-
+        return None, "Missing YouTube OAuth credentials."
     try:
         creds = Credentials(
             token=None,
@@ -83,13 +81,11 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
         res = SocialPostResult("youtube", False, err or "Could not build YouTube client.", str(video_path), title, description)
         _log_result(res)
         return res
-
     media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True, mimetype="video/*")
     body = {
         "snippet": {"title": title, "description": description, "categoryId": "22"},
         "status": {"privacyStatus": "unlisted"},
     }
-
     try:
         req = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
         response = None
@@ -111,12 +107,10 @@ def _upload_to_youtube(video_path: Path, title: str, description: str) -> Social
 def _post_to_facebook_page_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     page_id = os.getenv("FACEBOOK_PAGE_ID")
     access_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN")
-
     if not page_id or not access_token:
         res = SocialPostResult("facebook", False, "Missing FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN", str(video_path), title, description)
         _log_result(res)
         return res
-
     try:
         with open(video_path, "rb") as video_file:
             r = requests.post(
@@ -141,21 +135,17 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
     ig_user_id = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID")
     access_token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN") or os.getenv("INSTAGRAM_ACCESS_TOKEN")
     video_url = _public_url_for_file(video_path)
-
     if not ig_user_id or not access_token:
         res = SocialPostResult("instagram", False, "Missing INSTAGRAM_BUSINESS_ACCOUNT_ID or access token", str(video_path), title, description)
         _log_result(res)
         return res
-
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
         _log_result(res)
         return res
-
     graph_version = os.getenv("META_GRAPH_VERSION", "v19.0")
     media_type = os.getenv("INSTAGRAM_MEDIA_TYPE", "REELS")
     caption = f"{title}\n\n{description}".strip()
-
     try:
         create_resp = requests.post(
             f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media",
@@ -171,11 +161,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         res = SocialPostResult("instagram", False, f"Instagram create container failed: {err_txt}", str(video_path), title, description)
         _log_result(res)
         return res
-
     max_retries = int(os.getenv("INSTAGRAM_MAX_RETRIES", "60"))
     sleep_sec = int(os.getenv("INSTAGRAM_POLL_SECONDS", "5"))
     last_error_log = None
-
     for _ in range(max_retries):
         try:
             s = requests.get(
@@ -199,10 +187,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             last_error_log = str(e)
             time.sleep(sleep_sec)
     else:
-        res = SocialPostResult("instagram", False, f"Instagram processing timed out. Dernière erreur: {last_error_log}", str(video_path), title, description)
+        res = SocialPostResult("instagram", False, f"Instagram processing timed out. Last error: {last_error_log}", str(video_path), title, description)
         _log_result(res)
         return res
-
     try:
         publish_resp = requests.post(
             f"https://graph.facebook.com/{graph_version}/{ig_user_id}/media_publish",
@@ -216,7 +203,6 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         res = SocialPostResult("instagram", False, f"Instagram publish failed: {err_text}", str(video_path), title, description)
         _log_result(res)
         return res
-
     res = SocialPostResult("instagram", True, "Instagram published successfully.", str(video_path), title, description, {"instagram_post_id": publish_json.get("id")})
     _log_result(res)
     return res
@@ -239,7 +225,6 @@ def _get_tiktok_access_token() -> Optional[str]:
 
 def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> SocialPostResult:
     access_token = _get_tiktok_access_token()
-
     if not access_token:
         res = SocialPostResult("tiktok", False, "Missing TikTok access token. Go to /auth/tiktok/start first.", str(video_path), title, description)
         _log_result(res)
@@ -250,10 +235,17 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json; charset=UTF-8"}
 
     video_size = video_path.stat().st_size
-    MIN_CHUNK = 5 * 1024 * 1024
-    MAX_CHUNK = 64 * 1024 * 1024
-    chunk_size = min(MAX_CHUNK, max(MIN_CHUNK, video_size))
-    total_chunk_count = max(1, -(-video_size // chunk_size))
+
+    # TikTok chunk rules:
+    # - If file <= 5MB: one chunk, chunk_size = file size
+    # - If file > 5MB: use 5MB chunks (last chunk can be smaller)
+    FIVE_MB = 5 * 1024 * 1024
+    if video_size <= FIVE_MB:
+        chunk_size = video_size
+        total_chunk_count = 1
+    else:
+        chunk_size = FIVE_MB
+        total_chunk_count = -(-video_size // FIVE_MB)  # ceiling division
 
     init_payload = {
         "post_info": {
@@ -273,22 +265,21 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
     }
 
     try:
-        init_resp = requests.post("https://open.tiktokapis.com/v2/post/publish/inbox/video/init/", headers=headers, json=init_payload, timeout=30)
+        init_resp = requests.post(
+            "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+            headers=headers, json=init_payload, timeout=30
+        )
         init_data = init_resp.json()
-
         if "error" in init_data and init_data["error"].get("code") != "ok":
             res = SocialPostResult("tiktok", False, f"TikTok init failed: {init_data['error'].get('message', 'Unknown')}", str(video_path), title, description, {"raw": init_data})
             _log_result(res)
             return res
-
         publish_id = init_data.get("data", {}).get("publish_id")
         upload_url = init_data.get("data", {}).get("upload_url")
-
         if not publish_id or not upload_url:
             res = SocialPostResult("tiktok", False, f"No publish_id or upload_url: {init_data}", str(video_path), title, description)
             _log_result(res)
             return res
-
     except Exception as e:
         res = SocialPostResult("tiktok", False, f"TikTok init error: {str(e)}", str(video_path), title, description)
         _log_result(res)
@@ -318,7 +309,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
                     _log_result(res)
                     return res
                 bytes_uploaded += len(chunk_data)
-
     except Exception as e:
         res = SocialPostResult("tiktok", False, f"TikTok upload error: {str(e)}", str(video_path), title, description)
         _log_result(res)
@@ -331,7 +321,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
 
 def post_to_platform(platform: str, video_path: Path, title: str, description: str) -> Dict[str, Any]:
     normalized = platform.lower().strip()
-
     if normalized == "youtube":
         res = _upload_to_youtube(video_path, title, description)
     elif normalized == "facebook":
@@ -343,5 +332,4 @@ def post_to_platform(platform: str, video_path: Path, title: str, description: s
     else:
         res = SocialPostResult(normalized, False, f"Platform '{platform}' unknown", str(video_path), title, description)
         _log_result(res)
-
     return asdict(res)
