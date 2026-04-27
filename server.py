@@ -26,25 +26,9 @@ from backend.social import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
-# ✅ Streamlit now runs on its own Render service
+# Streamlit runs on its own Render service
 STREAMLIT_BASE = "https://emili-streamlit.onrender.com"
 
-# FastAPI routes that must NEVER be proxied to Streamlit
-FASTAPI_ROUTES = (
-    "/auth/",
-    "/generate",
-    "/publish",
-    "/health",
-    "/terms",
-    "/privacy",
-    "/delete-data",
-    "/docs",
-    "/openapi",
-    "/out/",
-    "/assets/",
-    "/legal/",
-    "/debug",
-)
 
 # ==========================================
 # HEALTH
@@ -225,10 +209,16 @@ def tiktok_auth_callback(
         if "access_token" in token_data:
             TOKENS["tiktok"] = token_data
             save_tokens(TOKENS)
-            return HTMLResponse("""
+            # Show token so user can copy it to Streamlit env vars
+            access_token = token_data.get("access_token", "")
+            return HTMLResponse(f"""
             <html><body style="font-family:Arial,sans-serif;padding:40px;background:#f0fdf4;">
                 <h1 style="color:#166534;">✅ TikTok Connected Successfully!</h1>
-                <p>Le token a été sauvegardé. Vous pouvez fermer cette page et cliquer sur Publish.</p>
+                <p>Le token a été sauvegardé.</p>
+                <hr/>
+                <p><strong>Copy this token and add it to your Render emili-streamlit environment variables as <code>TIKTOK_ACCESS_TOKEN</code>:</strong></p>
+                <textarea style="width:100%;height:80px;font-family:monospace;font-size:12px;">{access_token}</textarea>
+                <p>Render → emili-streamlit → Environment → Add: <code>TIKTOK_ACCESS_TOKEN</code> = (paste above)</p>
             </body></html>
             """)
         else:
@@ -240,6 +230,19 @@ def tiktok_auth_callback(
             """)
     except Exception as e:
         return HTMLResponse(f"<h1>❌ Internal Server Error</h1><p>{str(e)}</p>")
+
+
+# ==========================================
+# TIKTOK STATUS
+# ==========================================
+
+@app.get("/auth/tiktok/status")
+def tiktok_status():
+    tiktok_data = TOKENS.get("tiktok")
+    if not tiktok_data:
+        return {"tiktok_connected": False, "access_token": None}
+    access_token = tiktok_data.get("access_token") or tiktok_data.get("data", {}).get("access_token")
+    return {"tiktok_connected": bool(access_token), "access_token": access_token}
 
 
 # ==========================================
@@ -414,7 +417,7 @@ def debug_out():
 
 
 # ==========================================
-# REVERSE PROXY → STREAMLIT
+# REVERSE PROXY → STREAMLIT (catch-all)
 # ==========================================
 
 async def _proxy_to_streamlit(request: Request) -> Response:
@@ -458,10 +461,8 @@ async def _proxy_to_streamlit(request: Request) -> Response:
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"]
 )
 async def proxy_streamlit(path: str, request: Request):
-    full_path = "/" + path
-    for route in FASTAPI_ROUTES:
-        if full_path.startswith(route):
-            raise HTTPException(status_code=404, detail="Not found")
+    """Proxy everything not matched above to Streamlit.
+    FastAPI routes defined above always take priority automatically."""
     return await _proxy_to_streamlit(request)
 
 
@@ -473,7 +474,6 @@ async def proxy_streamlit(path: str, request: Request):
 async def websocket_proxy(websocket: WebSocket, path: str):
     await websocket.accept()
     query = websocket.url.query
-    # Point WebSocket to the external Streamlit service
     target_ws_url = f"wss://emili-streamlit.onrender.com/{path}"
     if query:
         target_ws_url += f"?{query}"
