@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import shutil
 
 import streamlit as st
 
@@ -93,7 +94,6 @@ st.sidebar.subheader("Publishing")
 auto_post = st.sidebar.checkbox(
     "Auto-post right after generation (use with care)",
     value=False,
-    help="If enabled and posting is implemented, the system will publish as soon as the video is generated.",
 )
 
 
@@ -167,7 +167,7 @@ with col_right:
 
             out_dir = PROJECT_ROOT / "out"
             out_dir.mkdir(parents=True, exist_ok=True)
-            
+
             outfile = out_dir / f"{pet_dir.name}_{aspect}.mp4"
 
             with st.spinner("Generating video (storyline, TTS, music, editing)..."):
@@ -196,10 +196,16 @@ with col_right:
                         out_path = Path(payload["outfile"])
                         if out_path.exists():
                             st.video(str(out_path))
+
+                            # ✅ Copy to static/ for Instagram public URL
+                            static_dir = PROJECT_ROOT / "static"
+                            static_dir.mkdir(parents=True, exist_ok=True)
+                            static_dest = static_dir / out_path.name
+                            shutil.copy(out_path, static_dest)
+
                         else:
                             st.warning("Video file path returned, but file not found on disk.")
 
-                       
                         st.session_state["last_video_info"] = {
                             "success": payload["success"],
                             "outfile": payload["outfile"],
@@ -223,16 +229,11 @@ else:
         st.write(f"Ready to publish: `{video_path.name}`")
 
         platforms = st.multiselect(
-       "Select platforms",
-        options=["youtube", "facebook", "instagram", "tiktok"],
-        default=["youtube"],
-        help=(
-        "Results are always logged to out/social_logs/. "
-        "YouTube / Facebook / Instagram will really publish if credentials "
-        "are configured in .env; TikTok is currently a logged stub."
-    ),
-)  
-
+            "Select platforms",
+            options=["youtube", "facebook", "instagram", "tiktok"],
+            default=["youtube"],
+            help="Results are always logged to out/social_logs/.",
+        )
 
         publish_clicked = st.button("Publish to selected platforms")
 
