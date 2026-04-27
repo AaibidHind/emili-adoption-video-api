@@ -46,7 +46,7 @@ def _public_url_for_file(video_path: Path) -> Optional[str]:
     if not base:
         return None
     safe_name = urllib.parse.quote(video_path.name)
-    return f"{base.rstrip('/')}/out/{safe_name}"
+    return f"{base.rstrip('/')}/app/static/{safe_name}"
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
