@@ -22,7 +22,6 @@ st.caption(
     "music, branding, and optional social posting."
 )
 
-
 openai_key = os.getenv("OPENAI_API_KEY")
 chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 tts_model = os.getenv("OPENAI_TTS_MODEL", "tts-1")
@@ -50,13 +49,11 @@ pet_folder_str = st.sidebar.text_input(
 logo_path_str = st.sidebar.text_input(
     "Brand logo (optional)",
     value=str(PROJECT_ROOT / "assets" / "branding" / "logo.png"),
-    help="PNG logo for intro/outro cards (future extension).",
 )
 
 music_folder_str = st.sidebar.text_input(
     "Music folder",
     value=str(PROJECT_ROOT / "assets" / "music"),
-    help="Folder with background music tracks.",
 )
 
 aspect = st.sidebar.selectbox(
@@ -67,17 +64,17 @@ aspect = st.sidebar.selectbox(
 
 target_duration = st.sidebar.slider(
     "Target duration (seconds)",
-    min_value=20,
-    max_value=60,
-    value=40,
+    min_value=10,
+    max_value=30,
+    value=20,
     step=5,
 )
 
 fps = st.sidebar.slider(
-    "FPS (hint for pacing)",
+    "FPS",
     min_value=24,
-    max_value=60,
-    value=30,
+    max_value=30,
+    value=24,
 )
 
 st.sidebar.subheader("Audio")
@@ -91,14 +88,9 @@ tts_speed = st.sidebar.slider(
 )
 
 st.sidebar.subheader("Publishing")
-auto_post = st.sidebar.checkbox(
-    "Auto-post right after generation (use with care)",
-    value=False,
-)
-
+auto_post = st.sidebar.checkbox("Auto-post right after generation", value=False)
 
 col_left, col_right = st.columns([1, 1.3])
-
 
 with col_left:
     st.subheader("Inputs")
@@ -136,8 +128,7 @@ with col_left:
             st.warning("No video clips found in Clips/ subfolder.")
 
     if problems:
-        st.info("Before generating, please fix the issues above so the AI has both metadata and clips.")
-
+        st.info("Before generating, please fix the issues above.")
 
 with col_right:
     st.subheader("Generated Video")
@@ -149,9 +140,9 @@ with col_right:
 
     if generate_clicked:
         if not openai_key:
-            output_placeholder.error("Missing OPENAI_API_KEY — please configure the server first.")
+            output_placeholder.error("Missing OPENAI_API_KEY.")
         elif not pet_dir.exists():
-            output_placeholder.error("Pet folder does not exist. Fix the path and try again.")
+            output_placeholder.error("Pet folder does not exist.")
         else:
             cfg = PetProjectConfig(
                 pet_dir=pet_dir,
@@ -167,7 +158,6 @@ with col_right:
 
             out_dir = PROJECT_ROOT / "out"
             out_dir.mkdir(parents=True, exist_ok=True)
-
             outfile = out_dir / f"{pet_dir.name}_{aspect}.mp4"
 
             with st.spinner("Generating video (storyline, TTS, music, editing)..."):
@@ -196,15 +186,11 @@ with col_right:
                         out_path = Path(payload["outfile"])
                         if out_path.exists():
                             st.video(str(out_path))
-
-                            # ✅ Copy to static/ for Instagram public URL
                             static_dir = PROJECT_ROOT / "static"
                             static_dir.mkdir(parents=True, exist_ok=True)
-                            static_dest = static_dir / out_path.name
-                            shutil.copy(out_path, static_dest)
-
+                            shutil.copy(out_path, static_dir / out_path.name)
                         else:
-                            st.warning("Video file path returned, but file not found on disk.")
+                            st.warning("Video file not found on disk.")
 
                         st.session_state["last_video_info"] = {
                             "success": payload["success"],
@@ -224,7 +210,7 @@ else:
     video_path = Path(last_info["outfile"])
 
     if not video_path.exists():
-        st.warning("Generated video file not found on disk. Please generate again.")
+        st.warning("Generated video file not found. Please generate again.")
     else:
         st.write(f"Ready to publish: `{video_path.name}`")
 
@@ -232,7 +218,6 @@ else:
             "Select platforms",
             options=["youtube", "facebook", "instagram", "tiktok"],
             default=["youtube"],
-            help="Results are always logged to out/social_logs/.",
         )
 
         publish_clicked = st.button("Publish to selected platforms")
