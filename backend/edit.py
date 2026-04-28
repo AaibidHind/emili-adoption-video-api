@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 import traceback
+import gc
 
 from moviepy.editor import (
     VideoFileClip,
@@ -14,7 +15,7 @@ from moviepy.editor import (
 
 from .subtitles import build_subtitle_clips
 
-print("[edit.py] LOADED VERSION P11 (ultra-low-memory)")
+print("[edit.py] LOADED VERSION P12 (minimum memory)")
 
 
 @dataclass
@@ -26,33 +27,25 @@ class StreamClip:
 
 
 def collect_clips(clips_dir: Path) -> List[Path]:
-    print(f"[edit.py] Using collect_clips from: {__file__}")
     if not clips_dir.exists():
-        print(f"[edit.py] Clips dir does not exist: {clips_dir}")
         return []
     exts = [".mp4", ".mov", ".m4v"]
     files = [p for p in sorted(clips_dir.iterdir()) if p.is_file() and p.suffix.lower() in exts]
-    print(f"[edit.py] Found {len(files)} candidate clips.")
-    for f in files:
-        print("  -", f)
     return files
 
 
 def _safe_probe_duration(path: Path) -> float:
     try:
-        print(f"[edit.py] Probing clip: {path}")
         with VideoFileClip(str(path)) as v:
             _ = v.get_frame(0)
             d = float(v.duration or 0)
-            print(f"[edit.py]   OK, duration = {d:.2f}s")
             return d
     except Exception as e:
-        print(f"[WARNING] Unreadable clip at probe: {path} | Error: {e}")
+        print(f"[WARNING] Unreadable clip: {path} | {e}")
         return 0.0
 
 
 def pick_visuals(clip_paths: List[Path], target_duration: float) -> List[StreamClip]:
-    print(f"[edit.py] Picking visuals up to ~{target_duration:.2f}s")
     visuals: List[StreamClip] = []
     total = 0.0
     for path in clip_paths:
@@ -67,17 +60,16 @@ def pick_visuals(clip_paths: List[Path], target_duration: float) -> List[StreamC
         total += dur
         if total >= target_duration:
             break
-    print(f"[edit.py] Selected {len(visuals)} clips, total ~{total:.2f}s")
     return visuals
 
 
 def _scale_for_aspect(aspect: str) -> Tuple[int, int]:
     a = (aspect or "").lower()
     if a in {"vertical", "portrait"}:
-        return (270, 480)
+        return (240, 426)
     if a == "square":
-        return (360, 360)
-    return (480, 270)
+        return (320, 320)
+    return (426, 240)
 
 
 def assemble_video(
@@ -93,10 +85,7 @@ def assemble_video(
     if not visuals:
         raise RuntimeError("assemble_video: no visuals to assemble")
 
-    print(f"[edit.py] Assembling video for {pet_name} with {len(visuals)} clips.")
-
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    error_log = out_path.parent / "video_error.log"
 
     clips: List[VideoFileClip] = []
     audio_clip: Optional[AudioFileClip] = None
@@ -107,33 +96,32 @@ def assemble_video(
     try:
         for sc in visuals:
             try:
-                print(f"[edit.py] Loading clip: {sc.path}")
-                v = VideoFileClip(str(sc.path), audio=False)
+                v = VideoFileClip(str(sc.path), audio=False, fps_source="fps")
             except Exception as e:
-                print(f"[WARNING] Skipping unreadable clip at load: {sc.path} | {e}")
+                print(f"[WARNING] Skipping clip: {sc.path} | {e}")
                 continue
 
             try:
                 if sc.duration and v.duration and sc.duration < v.duration:
                     v = v.subclip(0, sc.duration)
-            except Exception as e:
-                print(f"[WARNING] Could not trim clip {sc.path}: {e}")
+            except Exception:
+                pass
 
             v = v.resize((width, height))
             clips.append(v)
+            gc.collect()
 
         if not clips:
-            raise RuntimeError("assemble_video: no clips survived loading")
+            raise RuntimeError("No clips survived loading")
 
         concatenated = concatenate_videoclips(clips, method="chain")
-        print(f"[edit.py] Concatenated OK: {concatenated.duration:.2f}s")
         final_clip = concatenated
+        gc.collect()
 
         if audio_file and audio_file.exists():
             audio_clip = AudioFileClip(str(audio_file))
             vdur = float(final_clip.duration or 0.0)
             adur = float(audio_clip.duration or 0.0)
-            print(f"[edit.py] video={vdur:.2f}, audio={adur:.2f}")
             if adur > 0:
                 sync = min(vdur, adur)
                 if vdur > sync:
@@ -141,27 +129,9 @@ def assemble_video(
                 if adur > sync:
                     audio_clip = audio_clip.subclip(0, sync)
                 final_clip = final_clip.set_audio(audio_clip)
+            gc.collect()
 
-        if script:
-            try:
-                print("[edit.py] Generating subtitles...")
-                subs = build_subtitle_clips(
-                    script=script,
-                    total_duration=float(final_clip.duration or 0.0),
-                    width=width,
-                    height=height,
-                )
-                if subs:
-                    final_clip = CompositeVideoClip([final_clip, *subs])
-                else:
-                    print("[edit.py] No subtitles generated.")
-            except Exception:
-                error_log.write_text(
-                    "Subtitle rendering failed:\n\n" + "".join(traceback.format_exc()),
-                    encoding="utf-8",
-                )
-                print("[edit.py] Subtitles disabled due to error.")
-
+        # Skip subtitles to save memory
         print(f"[edit.py] Writing output: {out_path}")
         final_clip.write_videofile(
             str(out_path),
@@ -170,7 +140,9 @@ def assemble_video(
             fps=24,
             preset="ultrafast",
             audio_fps=48000,
-            ffmpeg_params=["-movflags", "+faststart"],
+            ffmpeg_params=["-movflags", "+faststart", "-crf", "28"],
+            threads=1,
+            logger=None,
         )
 
     finally:
@@ -189,6 +161,6 @@ def assemble_video(
                 final_clip.close()
             except Exception:
                 pass
+        gc.collect()
 
-    print("[edit.py] Done assemble_video")
     return out_path
