@@ -464,6 +464,7 @@ async def _proxy_to_streamlit(request: Request) -> Response:
             proxy_resp = await client.send(proxy_req)
             resp_headers = dict(proxy_resp.headers)
             resp_headers.pop("content-encoding", None)
+            resp_headers.pop("transfer-encoding", None) # <-- LIGNE CAPITALE À AJOUTER
             resp_headers.pop("content-length", None)
             return Response(
                 content=proxy_resp.content,
