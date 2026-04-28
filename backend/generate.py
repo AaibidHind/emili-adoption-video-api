@@ -156,7 +156,8 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
                 audio_dir.mkdir(parents=True, exist_ok=True)
                 audio_file = audio_dir / f"{pet_dir.name}_mix.mp3"
                
-                mix_clip.write_audiofile(str(audio_file), fps=48000)
+                
+                mix_clip.write_audiofile(str(audio_file), fps=22050)
                 mix_clip.close()
             else:
                 audio_file = voice_file
