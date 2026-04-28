@@ -4,10 +4,10 @@ from pathlib import Path
 import os
 import shutil
 
+import requests
 import streamlit as st
 
-from backend.generate import generate_video
-from backend.config import PROJECT_ROOT, PetProjectConfig
+from backend.config import PROJECT_ROOT
 from backend.social import post_to_platform
 
 
@@ -22,19 +22,16 @@ st.caption(
     "music, branding, and optional social posting."
 )
 
+GENERATOR_URL = os.getenv("GENERATOR_URL", "https://emili-generator.onrender.com")
+
 openai_key = os.getenv("OPENAI_API_KEY")
-chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
-tts_model = os.getenv("OPENAI_TTS_MODEL", "tts-1")
-tts_voice = os.getenv("OPENAI_TTS_VOICE", "alloy")
 
 with st.expander("Runtime configuration", expanded=False):
     if openai_key:
         st.success("OPENAI_API_KEY detected")
     else:
-        st.error("OPENAI_API_KEY is NOT set — generation will fail until this is configured.")
-    st.write(f"Chat model: `{chat_model}`")
-    st.write(f"TTS model: `{tts_model}`")
-    st.write(f"TTS voice: `{tts_voice}`")
+        st.warning("OPENAI_API_KEY not set here — should be set on the generator service.")
+    st.write(f"Generator service: `{GENERATOR_URL}`")
 
 st.sidebar.header("Settings")
 
@@ -43,7 +40,6 @@ default_pet_folder = PROJECT_ROOT / "examples" / "pets" / "Bruno"
 pet_folder_str = st.sidebar.text_input(
     "Pet folder",
     value=str(default_pet_folder),
-    help="Folder containing metadata.json and Clips/ subfolder for this pet.",
 )
 
 logo_path_str = st.sidebar.text_input(
@@ -70,13 +66,6 @@ target_duration = st.sidebar.slider(
     step=5,
 )
 
-fps = st.sidebar.slider(
-    "FPS",
-    min_value=24,
-    max_value=30,
-    value=24,
-)
-
 st.sidebar.subheader("Audio")
 use_tts = st.sidebar.checkbox("Generate narration with TTS", value=True)
 tts_speed = st.sidebar.slider(
@@ -86,9 +75,6 @@ tts_speed = st.sidebar.slider(
     value=1.0,
     step=0.05,
 )
-
-st.sidebar.subheader("Publishing")
-auto_post = st.sidebar.checkbox("Auto-post right after generation", value=False)
 
 col_left, col_right = st.columns([1, 1.3])
 
@@ -101,18 +87,14 @@ with col_left:
     st.code(f"pet_dir = {pet_dir}", language="bash")
     st.code(f"clips_dir = {clips_dir}", language="bash")
 
-    problems: list[str] = []
-
     if not pet_dir.exists():
-        problems.append("Pet folder not found on disk.")
-        st.error("Pet folder not found. Please correct the path in the sidebar.")
+        st.error("Pet folder not found.")
     else:
         meta_path = pet_dir / "metadata.json"
         if meta_path.exists():
             st.markdown(f"Metadata: `{meta_path}`")
         else:
-            problems.append("metadata.json is missing.")
-            st.warning("metadata.json not found in pet folder.")
+            st.warning("metadata.json not found.")
 
         clip_files = sorted(
             list(clips_dir.glob("*.mp4"))
@@ -124,11 +106,7 @@ with col_left:
             for c in clip_files:
                 st.write(f"- {c.name}")
         else:
-            problems.append("No video clips in Clips/.")
-            st.warning("No video clips found in Clips/ subfolder.")
-
-    if problems:
-        st.info("Before generating, please fix the issues above.")
+            st.warning("No video clips found in Clips/.")
 
 with col_right:
     st.subheader("Generated Video")
@@ -139,85 +117,71 @@ with col_right:
     generate_clicked = st.button("Generate Video", use_container_width=True)
 
     if generate_clicked:
-        if not openai_key:
-            output_placeholder.error("Missing OPENAI_API_KEY.")
-        elif not pet_dir.exists():
-            output_placeholder.error("Pet folder does not exist.")
-        else:
-            cfg = PetProjectConfig(
-                pet_dir=pet_dir,
-                logo_path=Path(logo_path_str) if logo_path_str else None,
-                music_dir=Path(music_folder_str) if music_folder_str else None,
-                aspect=aspect,
-                target_duration=target_duration,
-                fps=fps,
-                use_tts=use_tts,
-                tts_speed=tts_speed,
-                auto_post=auto_post,
-            )
+        with st.spinner("Sending to generator service..."):
+            try:
+                resp = requests.post(
+                    f"{GENERATOR_URL}/generate",
+                    json={
+                        "pet_dir": str(pet_dir),
+                        "logo_path": logo_path_str or None,
+                        "music_dir": music_folder_str or None,
+                        "aspect": aspect,
+                        "target_duration": target_duration,
+                        "fps": 24,
+                        "use_tts": use_tts,
+                        "tts_speed": tts_speed,
+                        "tts_voice": "alloy",
+                    },
+                    timeout=600
+                )
+                payload = resp.json()
+            except Exception as e:
+                output_placeholder.error(f"Could not reach generator service: {e}")
+                payload = None
 
-            out_dir = PROJECT_ROOT / "out"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            outfile = out_dir / f"{pet_dir.name}_{aspect}.mp4"
+        if payload:
+            if not payload.get("success"):
+                output_placeholder.error("Generation failed")
+                meta_placeholder.json(payload)
+            else:
+                output_placeholder.success("Video generated successfully!")
+                meta_placeholder.json(payload)
 
-            with st.spinner("Generating video (storyline, TTS, music, editing)..."):
-                try:
-                    result = generate_video(cfg, outfile)
-                except Exception as e:
-                    output_placeholder.error("Generation failed with an unexpected error.")
-                    meta_placeholder.exception(e)
-                else:
-                    payload = {
-                        "success": getattr(result, "success", False),
-                        "message": getattr(result, "message", ""),
-                        "duration": getattr(result, "duration", None),
-                        "tone_arc": getattr(result, "tone_arc", None),
-                        "title": getattr(result, "story_title", None),
-                        "outfile": str(getattr(result, "outfile", outfile)),
+                outfile_name = payload.get("outfile_name")
+                if outfile_name:
+                    video_url = f"{GENERATOR_URL}/out/{outfile_name}"
+                    st.video(video_url)
+
+                    st.session_state["last_video_info"] = {
+                        "success": True,
+                        "outfile": payload.get("outfile"),
+                        "outfile_name": outfile_name,
+                        "video_url": video_url,
+                        "title": payload.get("story_title"),
+                        "description": payload.get("tone_arc") or "",
                     }
-
-                    if not payload["success"]:
-                        output_placeholder.error("Generation failed")
-                        meta_placeholder.json(payload)
-                    else:
-                        output_placeholder.success("Video generated successfully")
-                        meta_placeholder.json(payload)
-
-                        out_path = Path(payload["outfile"])
-                        if out_path.exists():
-                            st.video(str(out_path))
-                            static_dir = PROJECT_ROOT / "static"
-                            static_dir.mkdir(parents=True, exist_ok=True)
-                            shutil.copy(out_path, static_dir / out_path.name)
-                        else:
-                            st.warning("Video file not found on disk.")
-
-                        st.session_state["last_video_info"] = {
-                            "success": payload["success"],
-                            "outfile": payload["outfile"],
-                            "title": payload["title"],
-                            "description": payload.get("tone_arc") or "",
-                        }
 
 st.markdown("---")
 st.subheader("Publish to social media")
 
 last_info = st.session_state.get("last_video_info")
 
-if not last_info or not last_info.get("success") or not last_info.get("outfile"):
+if not last_info or not last_info.get("success"):
     st.info("Generate a video first, then you can publish it here.")
 else:
-    video_path = Path(last_info["outfile"])
+    outfile_name = last_info.get("outfile_name")
+    video_url = last_info.get("video_url")
 
-    if not video_path.exists():
-        st.warning("Generated video file not found. Please generate again.")
+    if not outfile_name:
+        st.warning("No video available. Please generate again.")
     else:
-        st.write(f"Ready to publish: `{video_path.name}`")
+        st.write(f"Ready to publish: `{outfile_name}`")
+        st.write(f"Video URL: `{video_url}`")
 
         platforms = st.multiselect(
             "Select platforms",
             options=["youtube", "facebook", "instagram", "tiktok"],
-            default=["youtube"],
+            default=["tiktok"],
         )
 
         publish_clicked = st.button("Publish to selected platforms")
@@ -226,20 +190,36 @@ else:
             if not platforms:
                 st.warning("Please select at least one platform.")
             else:
-                all_results = []
-                for p in platforms:
-                    with st.spinner(f"Publishing to {p}..."):
-                        res = post_to_platform(
-                            platform=p,
-                            video_path=video_path,
-                            title=last_info.get("title") or video_path.stem,
-                            description=last_info.get("description") or "",
-                        )
-                        all_results.append(res)
+                # Download video from generator to local for publishing
+                try:
+                    with st.spinner("Downloading video for publishing..."):
+                        r = requests.get(video_url, timeout=120)
+                        local_path = Path("out") / outfile_name
+                        local_path.parent.mkdir(exist_ok=True)
+                        local_path.write_bytes(r.content)
 
-                st.success("Publish attempted. Results:")
-                for res in all_results:
-                    st.json(res)
+                        static_dir = Path("static")
+                        static_dir.mkdir(exist_ok=True)
+                        shutil.copy(local_path, static_dir / outfile_name)
+                except Exception as e:
+                    st.error(f"Failed to download video: {e}")
+                    local_path = None
+
+                if local_path and local_path.exists():
+                    all_results = []
+                    for p in platforms:
+                        with st.spinner(f"Publishing to {p}..."):
+                            res = post_to_platform(
+                                platform=p,
+                                video_path=local_path,
+                                title=last_info.get("title") or outfile_name,
+                                description=last_info.get("description") or "",
+                            )
+                            all_results.append(res)
+
+                    st.success("Publish attempted. Results:")
+                    for res in all_results:
+                        st.json(res)
 
 st.markdown("---")
 st.caption("Emili prototype - emotional adoption video generator (GPT-4 + TTS + MoviePy + branding).")
