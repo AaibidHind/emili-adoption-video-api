@@ -116,8 +116,18 @@ with col_right:
 
     generate_clicked = st.button("Generate Video", use_container_width=True)
 
-    if generate_clicked:
-        with st.spinner("Sending to generator service..."):
+if generate_clicked:
+        with st.spinner("Waking up generator service (may take 30s)..."):
+            for attempt in range(5):
+                try:
+                    ping = requests.get(f"{GENERATOR_URL}/health", timeout=30)
+                    if ping.status_code == 200:
+                        break
+                except Exception:
+                    import time
+                    time.sleep(5)
+
+        with st.spinner("Generating video (2-4 minutes)..."):
             try:
                 resp = requests.post(
                     f"{GENERATOR_URL}/generate",
