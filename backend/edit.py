@@ -14,8 +14,7 @@ from moviepy.editor import (
 
 from .subtitles import build_subtitle_clips
 
-print("[edit.py] LOADED VERSION P10 (low-memory + Netflix subtitles)")
-
+print("[edit.py] LOADED VERSION P11 (ultra-low-memory)")
 
 
 @dataclass
@@ -23,23 +22,23 @@ class StreamClip:
     path: Path
     duration: float
     start: float = 0.0
-    end: Optional[float] = None  
+    end: Optional[float] = None
+
 
 def collect_clips(clips_dir: Path) -> List[Path]:
     print(f"[edit.py] Using collect_clips from: {__file__}")
     if not clips_dir.exists():
         print(f"[edit.py] Clips dir does not exist: {clips_dir}")
         return []
-
     exts = [".mp4", ".mov", ".m4v"]
     files = [p for p in sorted(clips_dir.iterdir()) if p.is_file() and p.suffix.lower() in exts]
-
     print(f"[edit.py] Found {len(files)} candidate clips.")
     for f in files:
         print("  -", f)
     return files
+
+
 def _safe_probe_duration(path: Path) -> float:
-    
     try:
         print(f"[edit.py] Probing clip: {path}")
         with VideoFileClip(str(path)) as v:
@@ -56,42 +55,30 @@ def pick_visuals(clip_paths: List[Path], target_duration: float) -> List[StreamC
     print(f"[edit.py] Picking visuals up to ~{target_duration:.2f}s")
     visuals: List[StreamClip] = []
     total = 0.0
-
     for path in clip_paths:
         dur = _safe_probe_duration(path)
         if dur <= 0:
             continue
-
-        # If adding full clip would overshoot, trim it
         if total + dur > target_duration:
             dur = max(0.0, target_duration - total)
-
         if dur <= 0:
             break
-
         visuals.append(StreamClip(path=path, duration=dur))
         total += dur
-
         if total >= target_duration:
             break
-
-    print(f"[edit.py] Selected {len(visuals)} clips, total ~{total:.2f}s (possibly trimmed)")
+    print(f"[edit.py] Selected {len(visuals)} clips, total ~{total:.2f}s")
     return visuals
 
 
-
 def _scale_for_aspect(aspect: str) -> Tuple[int, int]:
-    """
-    Return target resolution. Very low to avoid memory issues.
-    """
     a = (aspect or "").lower()
     if a in {"vertical", "portrait"}:
-        return (360, 640)
-       
-    
+        return (270, 480)
     if a == "square":
-        return (480, 480)       
-    return (640, 360)           
+        return (360, 360)
+    return (480, 270)
+
 
 def assemble_video(
     pet_name: str,
@@ -118,7 +105,6 @@ def assemble_video(
     width, height = _scale_for_aspect(aspect)
 
     try:
-       
         for sc in visuals:
             try:
                 print(f"[edit.py] Loading clip: {sc.path}")
@@ -127,7 +113,6 @@ def assemble_video(
                 print(f"[WARNING] Skipping unreadable clip at load: {sc.path} | {e}")
                 continue
 
-            # Trim to requested duration if needed
             try:
                 if sc.duration and v.duration and sc.duration < v.duration:
                     v = v.subclip(0, sc.duration)
@@ -142,35 +127,24 @@ def assemble_video(
 
         concatenated = concatenate_videoclips(clips, method="chain")
         print(f"[edit.py] Concatenated OK: {concatenated.duration:.2f}s")
-
         final_clip = concatenated
 
-   
         if audio_file and audio_file.exists():
             audio_clip = AudioFileClip(str(audio_file))
-
             vdur = float(final_clip.duration or 0.0)
             adur = float(audio_clip.duration or 0.0)
-
             print(f"[edit.py] video={vdur:.2f}, audio={adur:.2f}")
-
             if adur > 0:
                 sync = min(vdur, adur)
-
                 if vdur > sync:
-                    print(f"[edit.py] Trimming video to {sync:.2f}s to match audio")
                     final_clip = final_clip.subclip(0, sync)
-
                 if adur > sync:
-                    print(f"[edit.py] Trimming audio to {sync:.2f}s to match video")
                     audio_clip = audio_clip.subclip(0, sync)
-
                 final_clip = final_clip.set_audio(audio_clip)
 
-      
         if script:
             try:
-                print("[edit.py] Generating PIL subtitle clips...")
+                print("[edit.py] Generating subtitles...")
                 subs = build_subtitle_clips(
                     script=script,
                     total_duration=float(final_clip.duration or 0.0),
@@ -188,20 +162,16 @@ def assemble_video(
                 )
                 print("[edit.py] Subtitles disabled due to error.")
 
-        
         print(f"[edit.py] Writing output: {out_path}")
         final_clip.write_videofile(
-          
-                 str(out_path),
-                 codec="libx264",
-                 audio_codec="aac",
-                 fps=30,
-                preset="medium",
-                audio_fps=48000,  # Instagram requires 48kHz
-                 ffmpeg_params=["-movflags", "+faststart"],  # moov atom at front
-)
-        
-        
+            str(out_path),
+            codec="libx264",
+            audio_codec="aac",
+            fps=24,
+            preset="ultrafast",
+            audio_fps=48000,
+            ffmpeg_params=["-movflags", "+faststart"],
+        )
 
     finally:
         for c in clips:
