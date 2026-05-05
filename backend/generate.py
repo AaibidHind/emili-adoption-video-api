@@ -23,40 +23,24 @@ class GenResult:
 
 
 def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
-   
 
     cfg.validate()
     pet_dir = cfg.pet_dir
 
-    
     try:
         metadata: Dict[str, Any] = load_metadata(pet_dir)
     except Exception as e:
-        return GenResult(
-            success=False,
-            message=f"Failed to load metadata: {repr(e)}",
-            outfile=None,
-            duration=None,
-            tone_arc=None,
-            story_title=None,
-        )
+        return GenResult(success=False, message=f"Failed to load metadata: {repr(e)}",
+                         outfile=None, duration=None, tone_arc=None, story_title=None)
 
     pet_name = metadata.get("name", "Friend")
 
-    
     try:
         story = build_story(metadata)
     except Exception as e:
-        return GenResult(
-            success=False,
-            message=f"Story generation failed: {repr(e)}",
-            outfile=None,
-            duration=None,
-            tone_arc=None,
-            story_title=None,
-        )
+        return GenResult(success=False, message=f"Story generation failed: {repr(e)}",
+                         outfile=None, duration=None, tone_arc=None, story_title=None)
 
-    
     voice_file: Optional[Path] = None
     voice_duration: Optional[float] = None
 
@@ -64,26 +48,22 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
         try:
             voice_dir = SETTINGS.base_output_dir / "voiceovers"
             voice_dir.mkdir(parents=True, exist_ok=True)
-
             voice_file = synth_voiceover(
                 text=story.script,
                 out_dir=voice_dir,
                 speed=cfg.tts_speed,
             )
-
             try:
                 with AudioFileClip(str(voice_file)) as vo_clip:
                     voice_duration = float(vo_clip.duration or 0.0)
             except Exception as e:
                 print("[generate.py] Warning: could not measure TTS duration:", e)
                 voice_duration = None
-
         except Exception as e:
             print("[generate.py] Warning: TTS failed:", e)
             voice_file = None
             voice_duration = None
 
-    
     def _compute_effective_duration() -> float:
         pad = 1.0
         if voice_duration is not None and voice_duration > 0:
@@ -91,47 +71,26 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
         return float(cfg.target_duration)
 
     effective_duration = _compute_effective_duration()
-
-    print(
-        f"[generate.py] target={cfg.target_duration:.2f}s, "
-        f"voice={voice_duration if voice_duration is not None else 'N/A'}s, "
-        f"effective={effective_duration:.2f}s"
-    )
-
+    print(f"[generate.py] target={cfg.target_duration:.2f}s, "
+          f"voice={voice_duration if voice_duration is not None else 'N/A'}s, "
+          f"effective={effective_duration:.2f}s")
 
     clips_dir = pet_dir / "Clips"
     clip_paths = collect_clips(clips_dir)
 
     if not clip_paths:
-        return GenResult(
-            success=False,
-            message=f"No video clips found in {clips_dir}",
-            outfile=None,
-            duration=None,
-            tone_arc=None,
-            story_title=None,
-        )
+        return GenResult(success=False, message=f"No video clips found in {clips_dir}",
+                         outfile=None, duration=None, tone_arc=None, story_title=None)
 
     visuals = pick_visuals(clip_paths, effective_duration)
 
     if not visuals:
-        return GenResult(
-            success=False,
-            message="All clips were unreadable — cannot build video.",
-            outfile=None,
-            duration=None,
-            tone_arc=None,
-            story_title=None,
-        )
+        return GenResult(success=False, message="All clips were unreadable — cannot build video.",
+                         outfile=None, duration=None, tone_arc=None, story_title=None)
 
     total_visual_duration = sum(c.duration for c in visuals)
+    print(f"[generate.py] visuals≈{total_visual_duration:.2f}s (requested≈{effective_duration:.2f}s)")
 
-    print(
-        f"[generate.py] visuals≈{total_visual_duration:.2f}s "
-        f"(requested≈{effective_duration:.2f}s)"
-    )
-
-    
     audio_file: Optional[Path] = None
 
     try:
@@ -139,10 +98,17 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
             mix_clip = None
             try:
                 print("[generate.py] Trying to build voice+music mix...")
+                music_file_path: Optional[Path] = None
+                if cfg.music_dir:
+                    mdir = Path(cfg.music_dir)
+                    if mdir.exists():
+                        candidates = sorted(list(mdir.rglob("*.mp3")) + list(mdir.rglob("*.wav")))
+                        if candidates:
+                            music_file_path = candidates[0]
                 mix_clip = build_audio_track(
                     total_visual_duration=effective_duration,
                     voice_file=voice_file,
-                    music_file=None,
+                    music_file=music_file_path,
                 )
             except MemoryError:
                 print("[generate.py] Music mix MemoryError, using voice only.")
@@ -155,8 +121,6 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
                 audio_dir = SETTINGS.base_output_dir / "audio"
                 audio_dir.mkdir(parents=True, exist_ok=True)
                 audio_file = audio_dir / f"{pet_dir.name}_mix.mp3"
-               
-                
                 mix_clip.write_audiofile(str(audio_file), fps=22050)
                 mix_clip.close()
             else:
@@ -166,12 +130,8 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
 
     except Exception as e:
         print("[generate.py] Warning: audio setup failed:", e)
-        if voice_file and voice_file.exists():
-            audio_file = voice_file
-        else:
-            audio_file = None
+        audio_file = voice_file if voice_file and voice_file.exists() else None
 
-   
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -185,29 +145,15 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
             script=story.script,
         )
     except MemoryError:
-        msg = (
-            "Rendering failed due to insufficient memory. "
-            "Try shorter clips, a smaller target duration, or a smaller aspect/resolution."
-        )
         return GenResult(
             success=False,
-            message=msg,
-            outfile=None,
-            duration=None,
-            tone_arc=story.tone_arc,
-            story_title=story.title,
+            message="Rendering failed due to insufficient memory. Try shorter clips or smaller duration.",
+            outfile=None, duration=None, tone_arc=story.tone_arc, story_title=story.title,
         )
     except Exception as e:
-        msg = f"Rendering failed: {repr(e)}"
         fallback = out_path if out_path.exists() and out_path.stat().st_size > 0 else None
-        return GenResult(
-            success=False,
-            message=msg,
-            outfile=fallback,
-            duration=None,
-            tone_arc=story.tone_arc,
-            story_title=story.title,
-        )
+        return GenResult(success=False, message=f"Rendering failed: {repr(e)}",
+                         outfile=fallback, duration=None, tone_arc=story.tone_arc, story_title=story.title)
 
     return GenResult(
         success=True,
