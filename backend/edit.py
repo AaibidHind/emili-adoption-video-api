@@ -15,7 +15,7 @@ from moviepy.editor import (
 
 from .subtitles import build_subtitle_clips
 
-print("[edit.py] LOADED VERSION P13 (original + Instagram fixes)")
+print("[edit.py] LOADED VERSION P14")
 
 
 @dataclass
@@ -138,10 +138,8 @@ def assemble_video(
             if adur > 0:
                 sync = min(vdur, adur)
                 if vdur > sync:
-                    print(f"[edit.py] Trimming video to {sync:.2f}s to match audio")
                     final_clip = final_clip.subclip(0, sync)
                 if adur > sync:
-                    print(f"[edit.py] Trimming audio to {sync:.2f}s to match audio")
                     audio_clip = audio_clip.subclip(0, sync)
                 final_clip = final_clip.set_audio(audio_clip)
 
@@ -171,7 +169,7 @@ def assemble_video(
             codec="libx264",
             audio_codec="aac",
             fps=30,
-            preset="medium",
+            preset="ultrafast",
             audio_fps=48000,
             ffmpeg_params=["-movflags", "+faststart"],
         )
