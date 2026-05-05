@@ -1,14 +1,14 @@
 from __future__ import annotations
-import requests, os
+from pathlib import Path
 from typing import Dict
-from ..config import get_settings
 
-def publish_tiktok(video_path: str, title: str, description: str, hashtags: list[str]) -> Dict:
-    s = get_settings()
-    if not (s.tiktok_client_key and s.tiktok_access_token):
-        return {"ok": False, "error": "TikTok creds missing"}
+
+def publish_tiktok(video_path: str, title: str, description: str, hashtags: list) -> Dict:
+    """Delegates to the full implementation in backend/social.py."""
     try:
-
-        return {"ok": False, "error": "Implement TikTok upload per your app's approved scope. See developer docs."}
+        from backend.social import _post_to_tiktok_via_url
+        full_desc = (description + "\n\n" + " ".join(f"#{h}" for h in hashtags)).strip() if hashtags else description
+        result = _post_to_tiktok_via_url(Path(video_path), title, full_desc)
+        return {"ok": result.success, "message": result.message}
     except Exception as e:
         return {"ok": False, "error": str(e)}
