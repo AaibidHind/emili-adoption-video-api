@@ -1,3 +1,3 @@
-from .publisher import publish
+from backend.social_main import post_to_platform, _post_to_tiktok_via_url, _post_to_facebook_page_via_url, _post_to_instagram_via_url, _upload_to_youtube
 
-__all__ = ["publish"]
+__all__ = ["post_to_platform"]
