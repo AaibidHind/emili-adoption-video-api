@@ -1,7 +1,6 @@
-
 from __future__ import annotations
 
-import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -15,50 +14,45 @@ from moviepy.editor import (
 from openai import OpenAI
 from .config import SETTINGS, PROJECT_ROOT
 
-client = OpenAI(api_key=SETTINGS.openai_api_key)
+
+def _get_client():
+    return OpenAI(api_key=SETTINGS.openai_api_key)
 
 
 def synth_voiceover(text: str, out_dir: Path, speed: float = 1.0) -> Path:
-   
-
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "voiceover.mp3"
 
-    # Send text → TTS
+    client = _get_client()
     resp = client.audio.speech.create(
         model=SETTINGS.openai_tts_model,
         voice=SETTINGS.openai_tts_voice,
         input=text,
     )
-
-    # Save generated MP3
     resp.stream_to_file(str(out_path))
 
-    # Apply speed adjustment via MoviePy
+    # Apply speed adjustment via temp file to avoid read/write race
     if speed != 1.0:
+        tmp_path = out_path.with_suffix(".tmp.mp3")
         clip = AudioFileClip(str(out_path))
         modified = clip.fx(afx.speedx, speed)
-
-        modified.write_audiofile(str(out_path), fps=44100)
-
+        modified.write_audiofile(str(tmp_path), fps=44100)
         clip.close()
         modified.close()
+        shutil.move(str(tmp_path), str(out_path))
 
     return out_path
 
+
 def _find_default_music() -> Optional[Path]:
-   
     music_root = PROJECT_ROOT / "assets" / "music"
     if not music_root.exists():
         return None
-
     candidates = list(music_root.rglob("*.mp3")) + list(music_root.rglob("*.wav"))
     if not candidates:
         return None
-
     candidates.sort()
     return candidates[0]
-
 
 
 def build_audio_track(
@@ -66,11 +60,9 @@ def build_audio_track(
     voice_file: Optional[Path],
     music_file: Optional[Path],
 ) -> Optional[CompositeAudioClip]:
-  
 
     audio_clips = []
 
-    
     if voice_file:
         try:
             vo = AudioFileClip(str(voice_file))
@@ -84,24 +76,15 @@ def build_audio_track(
     if music_file:
         try:
             music = AudioFileClip(str(music_file))
-
-           
-            if music.duration < total_visual_duration:  
+            if music.duration < total_visual_duration:
                 loops = int(total_visual_duration // music.duration) + 1
                 music = concatenate_audioclips([music] * loops)
-
-            
             music = music.subclip(0, total_visual_duration)
-
-            
             music = music.volumex(0.25).audio_fadein(1).audio_fadeout(1)
-
             audio_clips.append(music)
-
         except Exception as e:
             print(f"[audio.py] Warning: could not load music: {e}")
 
-    
     if not audio_clips:
         return None
 
