@@ -311,7 +311,8 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
 
     try:
         init_resp = requests.post(
-            "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+          
+            "https://open.tiktokapis.com/v2/post/publish/video/init/",
             headers=headers, json=init_payload, timeout=30
         )
         init_data = init_resp.json()
