@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -9,15 +8,12 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-
 ENV_PATH = PROJECT_ROOT / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 
-
 @dataclass
 class Settings:
-   
     openai_api_key: str
     openai_chat_model: str = "gpt-4o-mini"
     openai_tts_model: str = "tts-1"
@@ -32,7 +28,6 @@ class Settings:
                 f"Missing OPENAI_API_KEY in environment. "
                 f"Expected .env at: {ENV_PATH}"
             )
-
         return cls(
             openai_api_key=key,
             openai_chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
@@ -42,18 +37,31 @@ class Settings:
         )
 
 
-SETTINGS = Settings.from_env()
+def get_settings() -> "Settings":
+    """Lazy singleton — safe to import without OPENAI_API_KEY present."""
+    global _settings_cache
+    if _settings_cache is None:
+        _settings_cache = Settings.from_env()
+    return _settings_cache
+
+_settings_cache: "Settings | None" = None
+
+# Backwards-compatible alias — accessed as SETTINGS.openai_api_key etc.
+class _LazySettings:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+SETTINGS = _LazySettings()
 
 
 @dataclass
 class PetProjectConfig:
- 
     pet_dir: Path
     logo_path: Path | None = None
     music_dir: Path | None = None
 
     # Video properties
-    aspect: str = "vertical"  
+    aspect: str = "vertical"
     target_duration: int = 40
     fps: int = 30
 
@@ -66,20 +74,13 @@ class PetProjectConfig:
 
     # Publishing
     auto_post: bool = False
+
     def validate(self) -> None:
-       
-        # Normalize to Path
         if isinstance(self.pet_dir, str):
             self.pet_dir = Path(self.pet_dir).expanduser().resolve()
-
         if self.logo_path and isinstance(self.logo_path, str):
             self.logo_path = Path(self.logo_path).expanduser().resolve()
-
         if self.music_dir and isinstance(self.music_dir, str):
             self.music_dir = Path(self.music_dir).expanduser().resolve()
-
-     
         if not self.pet_dir.exists():
             raise FileNotFoundError(f"Pet directory does not exist: {self.pet_dir}")
-
-   
