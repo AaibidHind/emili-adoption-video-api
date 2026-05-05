@@ -27,3 +27,4 @@ google-auth-oauthlib
 
 websockets
 httpx
+apscheduler

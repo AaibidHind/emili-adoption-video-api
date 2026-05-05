@@ -19,10 +19,11 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from backend.config import PetProjectConfig
 from backend.generate import generate_video
-from backend.social import post_to_platform
+from backend.social_main import post_to_platform
 
 app = FastAPI(title="Emili Emotional Adoption Video Generator API")
 
@@ -110,13 +111,6 @@ def verify_tiktok_root_new():
         media_type="text/plain"
     )
 
-@app.get("/{filename}.txt")
-def serve_txt(filename: str):
-    file_path = STATIC_DIR / f"{filename}.txt"
-    if file_path.exists():
-        return FileResponse(str(file_path), media_type="text/plain")
-    raise HTTPException(status_code=404, detail="File not found")
-
 
 # ==========================================
 # STATIC FILE MOUNTS
@@ -162,6 +156,57 @@ TOKENS: Dict[str, Any] = load_tokens()
 
 
 # ==========================================
+# SCHEDULER — auto refresh Meta token every 50 days
+# ==========================================
+
+scheduler = AsyncIOScheduler()
+
+@scheduler.scheduled_job("interval", days=50)
+async def refresh_meta_token():
+    meta_data = TOKENS.get("meta")
+    if not meta_data or "access_token" not in meta_data:
+        print("[scheduler] No Meta token to refresh")
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                "https://graph.facebook.com/v19.0/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": META_APP_ID,
+                    "client_secret": META_APP_SECRET,
+                    "fb_exchange_token": meta_data["access_token"],
+                }
+            )
+            data = r.json()
+            if "access_token" in data:
+                TOKENS["meta"] = data
+                save_tokens(TOKENS)
+                print("[scheduler] ✅ Meta token refreshed successfully")
+            else:
+                print("[scheduler] ❌ Meta token refresh failed:", data)
+    except Exception as e:
+        print(f"[scheduler] Error refreshing Meta token: {e}")
+
+@scheduler.scheduled_job("interval", hours=20)
+async def tiktok_token_warning():
+    token = os.getenv("TIKTOK_ACCESS_TOKEN") or (TOKENS.get("tiktok") or {}).get("access_token")
+    if token:
+        print("[scheduler] ⚠️ TikTok token may be expiring soon — go to /auth/tiktok/start to refresh")
+    else:
+        print("[scheduler] ⚠️ No TikTok token found — go to /auth/tiktok/start")
+
+@app.on_event("startup")
+async def start_scheduler():
+    scheduler.start()
+    print("[scheduler] Started — Meta auto-refresh every 50 days")
+
+@app.on_event("shutdown")
+async def stop_scheduler():
+    scheduler.shutdown()
+
+
+# ==========================================
 # TIKTOK AUTH
 # ==========================================
 
@@ -180,7 +225,7 @@ def tiktok_auth_start():
     params = {
         "client_key": TIKTOK_CLIENT_KEY,
         "response_type": "code",
-        "scope": "user.info.basic,video.upload",
+        "scope": "video.upload",
         "redirect_uri": TIKTOK_REDIRECT_URI,
         "state": "emili_secure_state_123"
     }
@@ -242,7 +287,7 @@ def tiktok_auth_callback(
                 <h1 style="color:#166534;">✅ TikTok Connected Successfully!</h1>
                 <p>Le token a été sauvegardé.</p>
                 <hr/>
-                <p><strong>Copy this token and add it to your Render emili-streamlit environment variables as <code>TIKTOK_ACCESS_TOKEN</code>:</strong></p>
+                <p><strong>Copy this token and add it to your Render environment variables as <code>TIKTOK_ACCESS_TOKEN</code>:</strong></p>
                 <textarea style="width:100%;height:80px;font-family:monospace;font-size:12px;">{access_token}</textarea>
             </body></html>
             """)
@@ -283,7 +328,7 @@ def meta_auth_start():
     if not META_APP_ID or not META_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Missing META_APP_ID or META_REDIRECT_URI in environment.")
 
-    scopes = os.getenv("META_SCOPES", "public_profile,email")
+    scopes = os.getenv("META_SCOPES", "public_profile,email,pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish")
     state = secrets.token_urlsafe(16)
     OAUTH_STATE_META[state] = True
 
@@ -316,9 +361,28 @@ def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
     data = token_res.json()
 
     if "access_token" in data:
+        # Exchange for long-lived token immediately
+        try:
+            ll_res = requests.get(
+                "https://graph.facebook.com/v19.0/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": META_APP_ID,
+                    "client_secret": META_APP_SECRET,
+                    "fb_exchange_token": data["access_token"],
+                },
+                timeout=30,
+            )
+            ll_data = ll_res.json()
+            if "access_token" in ll_data:
+                data = ll_data
+                print("[meta] Exchanged for long-lived token successfully")
+        except Exception as e:
+            print(f"[meta] Long-lived token exchange failed: {e}")
+
         TOKENS["meta"] = data
         save_tokens(TOKENS)
-        return HTMLResponse("<h1>✅ Compte Meta connecté avec succès!</h1><p>Vous pouvez fermer cette fenêtre.</p>")
+        return HTMLResponse("<h1>✅ Compte Meta connecté avec succès!</h1><p>Token long-lived sauvegardé. Vous pouvez fermer cette fenêtre.</p>")
     else:
         return JSONResponse({"error": "Failed to get token", "details": data}, status_code=400)
 
@@ -353,11 +417,11 @@ def find_my_ids():
 
 class GenRequest(BaseModel):
     pet_dir: str
-    logo_path: Optional[str] = "assets/branding/logo.png"
+    logo_path: Optional[str] = "assets/branding/logo.jpg"
     music_dir: Optional[str] = "assets/music"
     tone: str = "auto"
     fps: int = 30
-    target_duration: int = 45
+    target_duration: int = 20
     aspect: str = "vertical"
     use_tts: bool = True
     transcribe_vo: bool = True
@@ -438,6 +502,18 @@ def debug_out():
 
 
 # ==========================================
+# STATIC TXT FILES
+# ==========================================
+
+@app.get("/{filename}.txt")
+def serve_txt(filename: str):
+    file_path = STATIC_DIR / f"{filename}.txt"
+    if file_path.exists():
+        return FileResponse(str(file_path), media_type="text/plain")
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+# ==========================================
 # REVERSE PROXY → STREAMLIT
 # ==========================================
 
@@ -464,7 +540,7 @@ async def _proxy_to_streamlit(request: Request) -> Response:
             proxy_resp = await client.send(proxy_req)
             resp_headers = dict(proxy_resp.headers)
             resp_headers.pop("content-encoding", None)
-            resp_headers.pop("transfer-encoding", None) # <-- LIGNE CAPITALE À AJOUTER
+            resp_headers.pop("transfer-encoding", None)
             resp_headers.pop("content-length", None)
             return Response(
                 content=proxy_resp.content,
@@ -529,3 +605,41 @@ async def websocket_proxy(websocket: WebSocket, path: str):
             await websocket.close()
         except Exception:
             pass
+        
+TIKTOK_REFRESH_URL = "https://open.tiktokapis.com/v2/oauth/token/"
+
+@scheduler.scheduled_job("interval", hours=20)
+async def refresh_tiktok_token():
+    tiktok_data = TOKENS.get("tiktok")
+    if not tiktok_data:
+        print("[scheduler] No TikTok token to refresh")
+        return
+    
+    refresh_token = tiktok_data.get("refresh_token")
+    if not refresh_token:
+        print("[scheduler] No TikTok refresh token found")
+        return
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                TIKTOK_REFRESH_URL,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={
+                    "client_key": TIKTOK_CLIENT_KEY,
+                    "client_secret": TIKTOK_CLIENT_SECRET,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                }
+            )
+            data = r.json()
+            if "access_token" in data:
+                TOKENS["tiktok"] = data
+                save_tokens(TOKENS)
+                # Also update env var in memory
+                os.environ["TIKTOK_ACCESS_TOKEN"] = data["access_token"]
+                print("[scheduler] ✅ TikTok token refreshed automatically")
+            else:
+                print("[scheduler] ❌ TikTok refresh failed:", data)
+    except Exception as e:
+        print(f"[scheduler] TikTok refresh error: {e}")
