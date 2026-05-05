@@ -47,7 +47,7 @@ pet_folder_str = st.sidebar.text_input(
 
 logo_path_str = st.sidebar.text_input(
     "Brand logo (optional)",
-    value=str(PROJECT_ROOT / "assets" / "branding" / "logo.png"),
+    value=str(PROJECT_ROOT / "assets" / "branding" / "logo.jpg"),
 )
 
 music_folder_str = st.sidebar.text_input(
