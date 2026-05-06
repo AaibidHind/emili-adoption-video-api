@@ -66,12 +66,14 @@ def _prepare_for_instagram(video_path: Path) -> Path:
         cmd = [
             "ffmpeg", "-y",
             "-i", str(video_path),
+            "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1",
             "-c:v", "libx264",
             "-c:a", "aac",
             "-ar", "48000",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             "-preset", "fast",
+            "-crf", "23",
             str(out_path)
         ]
         result = subprocess.run(cmd, check=True, capture_output=True, timeout=180)
@@ -83,6 +85,8 @@ def _prepare_for_instagram(video_path: Path) -> Path:
     except Exception as e:
         print(f"[social.py] ffmpeg re-encode error: {e}")
         return video_path
+
+
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
