@@ -4,12 +4,13 @@ from fastapi.staticfiles import StaticFiles
 
 import asyncio
 import websockets
-from fastapi import WebSocket
+from fastapi import WebSocket, UploadFile, File
 
 import os
 import secrets
 import json
 import urllib.parse
+import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -147,8 +148,28 @@ if LEGAL_DIR.exists():
 def health():
     return {"status": "ok"}
 
+@app.post("/upload")
+async def upload_video(file: UploadFile = File(...)):
+    dest = OUT_DIR / file.filename
+    with open(dest, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    shutil.copy(dest, STATIC_DIR / file.filename)
+    return {"filename": file.filename, "url": f"{os.getenv('SOCIAL_PUBLIC_BASE_URL', '')}/video/{file.filename}"}
+
 @app.get("/video/{filename}")
 async def serve_video(filename: str):
+    local_path = STATIC_DIR / filename
+    if local_path.exists():
+        return Response(
+            content=local_path.read_bytes(),
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f"inline; filename={filename}",
+                "Content-Type": "video/mp4",
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
     video_url = f"https://emili-streamlit.onrender.com/app/static/{filename}"
     try:
         async with httpx.AsyncClient(timeout=60) as client:

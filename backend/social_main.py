@@ -60,6 +60,30 @@ def _copy_to_static(video_path: Path) -> None:
         print(f"[social.py] Failed to copy to static: {e}")
 
 
+def _upload_video_to_render(video_path: Path) -> bool:
+    base = os.getenv("SOCIAL_PUBLIC_BASE_URL")
+    if not base:
+        print("[social.py] No SOCIAL_PUBLIC_BASE_URL set, skipping upload to Render")
+        return False
+    try:
+        print(f"[social.py] Uploading {video_path.name} to Render...")
+        with open(video_path, "rb") as f:
+            r = requests.post(
+                f"{base.rstrip('/')}/upload",
+                files={"file": (video_path.name, f, "video/mp4")},
+                timeout=300
+            )
+        if r.status_code == 200:
+            print("[social.py] Upload to Render successful")
+            return True
+        else:
+            print(f"[social.py] Upload to Render failed: {r.status_code} {r.text}")
+            return False
+    except Exception as e:
+        print(f"[social.py] Upload to Render error: {e}")
+        return False
+
+
 def _prepare_for_instagram(video_path: Path) -> Path:
     out_path = video_path.parent / f"ig_{video_path.name}"
     try:
@@ -76,7 +100,7 @@ def _prepare_for_instagram(video_path: Path) -> Path:
             "-crf", "23",
             str(out_path)
         ]
-        result = subprocess.run(cmd, check=True, capture_output=True, timeout=180)
+        subprocess.run(cmd, check=True, capture_output=True, timeout=180)
         print(f"[social.py] ffmpeg re-encode success: {out_path.name}")
         return out_path
     except subprocess.CalledProcessError as e:
@@ -85,8 +109,6 @@ def _prepare_for_instagram(video_path: Path) -> Path:
     except Exception as e:
         print(f"[social.py] ffmpeg re-encode error: {e}")
         return video_path
-
-
 
 
 def _build_youtube_client() -> Tuple[Optional[Any], Optional[str]]:
@@ -176,13 +198,14 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
         _log_result(res)
         return res
 
-    # Re-encode with ffmpeg for Instagram compatibility (48kHz, faststart, yuv420p)
     ready_path = _prepare_for_instagram(video_path)
 
-    # Copy to static for public serving
     _copy_to_static(ready_path)
 
-    # Use FastAPI proxy URL for clean direct download
+    uploaded = _upload_video_to_render(ready_path)
+    if not uploaded:
+        print("[social.py] Warning: could not upload to Render, Instagram may not be able to access the video")
+
     video_url = _public_url_for_file(ready_path)
     if not video_url:
         res = SocialPostResult("instagram", False, "Missing SOCIAL_PUBLIC_BASE_URL", str(video_path), title, description)
@@ -228,9 +251,9 @@ def _post_to_instagram_via_url(video_path: Path, title: str, description: str) -
             if code == "FINISHED":
                 break
             if code == "ERROR":
-                raw_status = data.get("status", "Raison inconnue")
+                raw_status = data.get("status", "Unknown reason")
                 error_msg = raw_status.get("error_message", str(raw_status)) if isinstance(raw_status, dict) else str(raw_status)
-                res = SocialPostResult("instagram", False, f"Instagram a rejeté la vidéo : {error_msg}", str(video_path), title, description, {"video_url": video_url})
+                res = SocialPostResult("instagram", False, f"Instagram rejected the video: {error_msg}", str(video_path), title, description, {"video_url": video_url})
                 _log_result(res)
                 return res
             time.sleep(sleep_sec)
@@ -315,7 +338,6 @@ def _post_to_tiktok_via_url(video_path: Path, title: str, description: str) -> S
 
     try:
         init_resp = requests.post(
-          
             "https://open.tiktokapis.com/v2/post/publish/video/init/",
             headers=headers, json=init_payload, timeout=30
         )
