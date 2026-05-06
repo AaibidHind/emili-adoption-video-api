@@ -184,45 +184,60 @@ with col_right:
                         }
 
 st.markdown("---")
+
 st.subheader("Publish to social media")
 
-last_info = st.session_state.get("last_video_info")
 
-if not last_info or not last_info.get("success") or not last_info.get("outfile"):
-    st.info("Generate a video first, then you can publish it here.")
+out_dir = PROJECT_ROOT / "out"
+existing_videos = sorted(out_dir.glob("*.mp4")) if out_dir.exists() else []
+
+if existing_videos:
+    video_options = {v.name: v for v in existing_videos}
+    selected_video_name = st.selectbox(
+        "Pick a video to publish",
+        options=list(video_options.keys()),
+    )
+    selected_video = video_options[selected_video_name]
+    st.video(str(selected_video))
 else:
-    video_path = Path(last_info["outfile"])
+    selected_video = None
+    st.info("No videos in out/ folder yet. Generate one first.")
 
-    if not video_path.exists():
-        st.warning("Generated video file not found. Please generate again.")
-    else:
-        st.write(f"Ready to publish: `{video_path.name}`")
 
-        platforms = st.multiselect(
-            "Select platforms",
-            options=["youtube", "facebook", "instagram", "tiktok"],
-            default=["tiktok"],
-        )
+last_info = st.session_state.get("last_video_info")
+if last_info and last_info.get("outfile"):
+    last_path = Path(last_info["outfile"])
+    if last_path.exists():
+        st.info(f"Last generated: `{last_path.name}`")
 
-        publish_clicked = st.button("Publish to selected platforms")
+if selected_video:
+    platforms = st.multiselect(
+        "Select platforms",
+        options=["youtube", "facebook", "instagram", "tiktok"],
+        default=["tiktok"],
+    )
 
-        if publish_clicked:
-            if not platforms:
-                st.warning("Please select at least one platform.")
-            else:
-                all_results = []
-                for p in platforms:
-                    with st.spinner(f"Publishing to {p}..."):
-                        res = post_to_platform(
-                            platform=p,
-                            video_path=video_path,
-                            title=last_info.get("title") or video_path.stem,
-                            description=last_info.get("description") or "",
-                        )
-                        all_results.append(res)
+    title = st.text_input("Title", value=selected_video.stem.replace("_", " "))
+    description = st.text_area("Description", value="Meet your new best friend!")
 
-                st.success("Publish attempted. Results:")
-                for res in all_results:
+    publish_clicked = st.button("Publish to selected platforms")
+
+    if publish_clicked:
+        if not platforms:
+            st.warning("Please select at least one platform.")
+        else:
+            for p in platforms:
+                with st.spinner(f"Publishing to {p}..."):
+                    res = post_to_platform(
+                        platform=p,
+                        video_path=selected_video,
+                        title=title,
+                        description=description,
+                    )
+                    if res.get("success"):
+                        st.success(f" {p} — {res.get('message')}")
+                    else:
+                        st.error(f" {p} — {res.get('message')}")
                     st.json(res)
 
 st.markdown("---")
