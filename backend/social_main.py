@@ -173,10 +173,12 @@ def _post_to_facebook_page_via_url(video_path: Path, title: str, description: st
         with open(video_path, "rb") as video_file:
             r = requests.post(
                 f"https://graph.facebook.com/v19.0/{page_id}/videos",
-                data={"access_token": access_token, "description": description, "title": title},
+                data={"access_token": access_token, "description": description, "title": title, "published": "true",
+                      },
                 files={"source": video_file},
                 timeout=600
             )
+            
         r.raise_for_status()
         j = r.json()
         res = SocialPostResult("facebook", True, "Facebook direct upload completed.", str(video_path), title, description, {"video_id": j.get("id")})
