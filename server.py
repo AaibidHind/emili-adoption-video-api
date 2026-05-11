@@ -144,9 +144,91 @@ LEGAL_DIR = Path("legal")
 if LEGAL_DIR.exists():
     app.mount("/legal", StaticFiles(directory="legal", html=True), name="legal")
 
+def _landing_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emili - Adoption Video Generator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;color:#111}
+.hero{padding:60px 32px 48px;text-align:center;border-bottom:1px solid #eee}
+.hero h1{font-size:28px;font-weight:600;margin-bottom:14px}
+.hero p{font-size:16px;color:#555;max-width:520px;margin:0 auto 32px;line-height:1.6}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:14px 28px;background:#fe2c55;color:white;border-radius:8px;font-size:16px;font-weight:600;text-decoration:none}
+.features{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #eee}
+.feature{padding:28px 24px;border-right:1px solid #eee}
+.feature:last-child{border-right:none}
+.feature h3{font-size:15px;font-weight:600;margin-bottom:8px}
+.feature p{font-size:13px;color:#666;line-height:1.5}
+.steps{padding:48px 32px;max-width:600px;margin:0 auto}
+.steps h2{font-size:20px;font-weight:600;margin-bottom:28px;text-align:center}
+.step{display:flex;gap:16px;margin-bottom:20px}
+.num{width:32px;height:32px;border-radius:50%;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.step h4{font-size:14px;font-weight:600;margin-bottom:4px}
+.step p{font-size:13px;color:#666;line-height:1.5}
+.cta{padding:40px 32px;text-align:center;border-top:1px solid #eee;border-bottom:1px solid #eee}
+.cta p{font-size:15px;color:#555;margin-bottom:20px}
+.footer{padding:20px 32px;display:flex;justify-content:space-between;align-items:center}
+.footer p{font-size:12px;color:#999}
+.footer a{font-size:12px;color:#666;text-decoration:none;margin-left:16px}
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>Emili adoption video generator</h1>
+  <p>We help animal shelters create emotional adoption videos and publish them automatically to TikTok, Instagram, YouTube, and Facebook so more animals find homes, faster.</p>
+  <a href="/auth/tiktok/start" class="btn">Connect your TikTok account</a>
+</div>
+<div class="features">
+  <div class="feature">
+    <h3>AI-generated videos</h3>
+    <p>GPT-4 writes an emotional adoption script, TTS narrates it, and the video is assembled automatically.</p>
+  </div>
+  <div class="feature">
+    <h3>One-click publishing</h3>
+    <p>Publish directly to TikTok, Instagram, YouTube, and Facebook from a single interface.</p>
+  </div>
+  <div class="feature">
+    <h3>Built for shelters</h3>
+    <p>Used by over 150 municipalities and shelters across Canada. Available in English and French.</p>
+  </div>
+</div>
+<div class="steps">
+  <h2>How shelter administrators connect TikTok</h2>
+  <div class="step">
+    <div class="num">1</div>
+    <div><h4>Click "Connect your TikTok account"</h4><p>You will be redirected to TikTok's secure authorization page.</p></div>
+  </div>
+  <div class="step">
+    <div class="num">2</div>
+    <div><h4>Log in and authorize Emili</h4><p>Grant Emili permission to upload videos to your TikTok profile on your behalf.</p></div>
+  </div>
+  <div class="step">
+    <div class="num">3</div>
+    <div><h4>Generate and publish</h4><p>Use the Emili dashboard to generate adoption videos and post them directly to TikTok with one click.</p></div>
+  </div>
+</div>
+<div class="cta">
+  <p>Ready to help more animals find homes?</p>
+  <a href="/auth/tiktok/start" class="btn">Connect TikTok account</a>
+</div>
+<div class="footer">
+  <p>Emili Tracking Solutions Inc. — Montreal, QC, Canada</p>
+  <div><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/delete-data">Data deletion</a></div>
+</div>
+</body>
+</html>"""
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/", response_class=HTMLResponse)
+def landing_page():
+    return HTMLResponse(_landing_html())
 
 @app.post("/upload")
 async def upload_video(file: UploadFile = File(...)):
@@ -241,18 +323,19 @@ def tiktok_auth_start():
 
     url = f"{TIKTOK_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
-    html_content = f"""
-    <html>
-        <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#f9fafb;margin:0;">
-            <div style="text-align:center;padding:40px;background:white;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
-                <h2 style="color:#333;">Connect TikTok</h2>
-                <a href="{url}" style="display:inline-block;padding:15px 30px;background:#fe2c55;color:#fff;text-decoration:none;font-size:18px;font-weight:bold;border-radius:8px;margin-top:20px;">
-                    Login with TikTok
-                </a>
-            </div>
-        </body>
-    </html>
-    """
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Connect TikTok - Emili</title></head>
+<body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:Arial,sans-serif;background:#f9fafb;margin:0;">
+  <div style="text-align:center;padding:40px;background:white;border-radius:10px;border:1px solid #eee;max-width:400px;">
+    <h2 style="color:#111;margin-bottom:12px;">Connect TikTok</h2>
+    <p style="color:#666;margin-bottom:24px;font-size:15px;">Authorize Emili to publish adoption videos to your TikTok account.</p>
+    <a href="{url}" style="display:inline-block;padding:14px 28px;background:#fe2c55;color:#fff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
+      Login with TikTok
+    </a>
+  </div>
+</body>
+</html>"""
     return HTMLResponse(content=html_content)
 
 @app.get("/auth/tiktok/callback")
@@ -291,23 +374,27 @@ def tiktok_auth_callback(
             save_tokens(TOKENS)
             access_token = token_data.get("access_token", "")
             refresh_token = token_data.get("refresh_token", "")
-            return HTMLResponse(f"""
-            <html><body style="font-family:Arial,sans-serif;padding:40px;background:#f0fdf4;">
-                <h1 style="color:#166534;">TikTok Connected</h1>
-                <p>Add to Render env vars and your local .env:</p>
-                <p><strong>TIKTOK_ACCESS_TOKEN</strong></p>
-                <textarea style="width:100%;height:60px;font-family:monospace;font-size:12px;">{access_token}</textarea>
-                <p><strong>TIKTOK_REFRESH_TOKEN</strong></p>
-                <textarea style="width:100%;height:60px;font-family:monospace;font-size:12px;">{refresh_token}</textarea>
-            </body></html>
-            """)
+            return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>TikTok Connected - Emili</title></head>
+<body style="font-family:Arial,sans-serif;padding:40px;background:#f0fdf4;max-width:600px;margin:0 auto;">
+  <h1 style="color:#166534;margin-bottom:16px;">TikTok connected</h1>
+  <p style="margin-bottom:20px;">Add both values to your Render environment variables and your local .env file.</p>
+  <p><strong>TIKTOK_ACCESS_TOKEN</strong></p>
+  <textarea style="width:100%;height:60px;font-family:monospace;font-size:12px;margin-bottom:16px;">{access_token}</textarea>
+  <p><strong>TIKTOK_REFRESH_TOKEN</strong></p>
+  <textarea style="width:100%;height:60px;font-family:monospace;font-size:12px;">{refresh_token}</textarea>
+</body>
+</html>""")
         else:
-            return HTMLResponse(f"""
-            <html><body style="font-family:Arial,sans-serif;padding:40px;background:#fff7ed;">
-                <h1 style="color:#b91c1c;">TikTok Token Exchange Failed</h1>
-                <pre>{json.dumps(token_data, indent=2)}</pre>
-            </body></html>
-            """)
+            return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>TikTok Error - Emili</title></head>
+<body style="font-family:Arial,sans-serif;padding:40px;background:#fff7ed;">
+  <h1 style="color:#b91c1c;">TikTok token exchange failed</h1>
+  <pre>{json.dumps(token_data, indent=2)}</pre>
+</body>
+</html>""")
     except Exception as e:
         return HTMLResponse(f"<h1>Internal Server Error</h1><p>{str(e)}</p>")
 
@@ -376,7 +463,7 @@ def meta_auth_callback(code: Optional[str] = None, state: Optional[str] = None):
 
         TOKENS["meta"] = data
         save_tokens(TOKENS)
-        return HTMLResponse("<h1>Meta Connected</h1><p>Long-lived token saved. You can close this window.</p>")
+        return HTMLResponse("<h1>Meta connected</h1><p>Long-lived token saved. You can close this window.</p>")
     else:
         return JSONResponse({"error": "Failed to get token", "details": data}, status_code=400)
 
