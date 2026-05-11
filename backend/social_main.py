@@ -85,6 +85,8 @@ def _upload_video_to_render(video_path: Path) -> bool:
 
 
 def _prepare_for_instagram(video_path: Path) -> Path:
+    if video_path.name.startswith("ig_"):
+        return video_path
     out_path = video_path.parent / f"ig_{video_path.name}"
     try:
         cmd = [

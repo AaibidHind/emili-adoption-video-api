@@ -113,7 +113,7 @@ def generate_video(cfg: PetProjectConfig, out_path: Path) -> GenResult:
             except MemoryError:
                 print("[generate.py] Music mix MemoryError, using voice only.")
                 mix_clip = None
-            except Exception as e:
+            except Exception as e: 
                 print("[generate.py] Music mix failed:", e)
                 mix_clip = None
 
